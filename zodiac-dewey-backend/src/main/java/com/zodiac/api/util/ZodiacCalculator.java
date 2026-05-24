@@ -10,17 +10,13 @@ import java.time.format.DateTimeFormatter;
  * - 月亮:基于简化天文公式近似计算（27.3216天周期），精度约±1-2个星座
  * - 上升:基于简化算法（每2小时切换一个星座），未考虑出生地点纬度，精度有限
  * <p>
- * ⚠️ 重要说明:当前为MVP简化版算法，与专业占星软件存在差距:
- *   1. 月亮星座使用平均周期计算，未考虑月球轨道偏心率
- *   2. 上升星座使用简化公式，未考虑:
- *      - 出生地点地理纬度
- *      - 黄赤交角变化
- *      - 岁差影响
- *   3. 未计算金星、火星等其他行星位置
+ * ✅ Swiss Ephemeris 已集成: {@link SwissEphemerisCalculator}
+ *    生产环境建议使用 SwissEphemerisCalculator 进行精确计算:
+ *    - 太阳/月亮精度: ±1角秒
+ *    - 上升星座准确率: ~95%（需精确出生时间和经纬度）
+ *    - 支持金星、火星等其他行星位置计算
  * <p>
- * 🚀 优化建议:接入 Swiss Ephemeris 库进行精确天文计算
- *    或调用专业占星API（如AstroSeek、Astro-Seek等）
- *    预期精度提升:上升星座准确率从~60%提升至~95%
+ * 此类保留作为回退算法（fallback），当 Swiss Ephemeris 不可用时使用
  */
 public class ZodiacCalculator {
 

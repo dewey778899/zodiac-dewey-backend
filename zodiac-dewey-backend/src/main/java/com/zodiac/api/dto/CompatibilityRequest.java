@@ -41,5 +41,14 @@ public class CompatibilityRequest {
 
         private String birthTime;
         private String birthPlace;
+        
+        /** 出生地纬度（用于 Swiss Ephemeris 精确计算） */
+        private Double birthLatitude;
+        
+        /** 出生地经度（用于 Swiss Ephemeris 精确计算） */
+        private Double birthLongitude;
+        
+        /** 出生地时区（如 Asia/Shanghai） */
+        private String birthTimezone;
     }
 }

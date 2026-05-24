@@ -32,6 +32,12 @@ public class SoulmateReport {
     private String userABirthTime;
     @Column(name = "user_a_place", length = 50)
     private String userABirthPlace;
+    @Column(name = "user_a_lat")
+    private Double userABirthLatitude;
+    @Column(name = "user_a_lon")
+    private Double userABirthLongitude;
+    @Column(name = "user_a_timezone", length = 50)
+    private String userABirthTimezone;
     @Column(name = "zodiac_a", length = 20)
     private String zodiacA;
     @Column(name = "moon_a", length = 20)
@@ -49,6 +55,12 @@ public class SoulmateReport {
     private String userBBirthTime;
     @Column(name = "user_b_place", length = 50)
     private String userBBirthPlace;
+    @Column(name = "user_b_lat")
+    private Double userBBirthLatitude;
+    @Column(name = "user_b_lon")
+    private Double userBBirthLongitude;
+    @Column(name = "user_b_timezone", length = 50)
+    private String userBBirthTimezone;
     @Column(name = "zodiac_b", length = 20)
     private String zodiacB;
     @Column(name = "moon_b", length = 20)

@@ -6,6 +6,7 @@ import com.zodiac.api.dto.CompatibilityRequest;
 import com.zodiac.api.dto.CompatibilityResponse;
 import com.zodiac.api.entity.SoulmateReport;
 import com.zodiac.api.repository.SoulmateReportRepository;
+import com.zodiac.api.util.SwissEphemerisCalculator;
 import com.zodiac.api.util.ZodiacCalculator;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -13,6 +14,7 @@ import org.springframework.stereotype.Service;
 
 import java.security.SecureRandom;
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.List;
@@ -29,6 +31,7 @@ public class CompatibilityService {
     private final SoulmateReportRepository repository;
     private final ZodiacScoringService scoringService;
     private final ObjectMapper objectMapper;
+    private final SwissEphemerisCalculator swissEphemerisCalculator;
     private final SecureRandom rng = new SecureRandom();
 
     private static final String CHARS = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
@@ -46,10 +49,11 @@ public class CompatibilityService {
     public CompatibilityResponse generateReport(CompatibilityRequest request, String ip, String userAgent) {
         String reportType = normalizeReportType(request.getReportType());
         boolean singleReport = isSingleReport(reportType);
-        var triA = ZodiacCalculator.computeAll(request.getPersonA().getBirthDate(), request.getPersonA().getBirthTime());
+        // 使用 Swiss Ephemeris 精确计算（如果有经纬度），否则使用简化算法
+        var triA = computeZodiacTriplet(request.getPersonA());
         var triB = singleReport
                 ? triA
-                : ZodiacCalculator.computeAll(request.getPersonB().getBirthDate(), request.getPersonB().getBirthTime());
+                : computeZodiacTriplet(request.getPersonB());
 
         if (singleReport) {
             log.info("Generating {} report: {}({}/{}/{})",
@@ -112,6 +116,9 @@ public class CompatibilityService {
             personA.setBirthDate(entity.getUserABirthDate());
             personA.setBirthTime(entity.getUserABirthTime());
             personA.setBirthPlace(entity.getUserABirthPlace());
+            personA.setBirthLatitude(entity.getUserABirthLatitude());
+            personA.setBirthLongitude(entity.getUserABirthLongitude());
+            personA.setBirthTimezone(entity.getUserABirthTimezone());
 
             CompatibilityRequest.Person personB = null;
             if (!singleReport && entity.getUserBName() != null) {
@@ -121,6 +128,9 @@ public class CompatibilityService {
                 personB.setBirthDate(entity.getUserBBirthDate());
                 personB.setBirthTime(entity.getUserBBirthTime());
                 personB.setBirthPlace(entity.getUserBBirthPlace());
+                personB.setBirthLatitude(entity.getUserBBirthLatitude());
+                personB.setBirthLongitude(entity.getUserBBirthLongitude());
+                personB.setBirthTimezone(entity.getUserBBirthTimezone());
             }
 
             var req = new CompatibilityRequest();
@@ -918,6 +928,9 @@ public class CompatibilityService {
         e.setUserABirthDate(truncate(a.getBirthDate(), 20));
         e.setUserABirthTime(truncate(a.getBirthTime(), 10));
         e.setUserABirthPlace(truncate(a.getBirthPlace(), 50));
+        e.setUserABirthLatitude(a.getBirthLatitude());
+        e.setUserABirthLongitude(a.getBirthLongitude());
+        e.setUserABirthTimezone(truncate(a.getBirthTimezone(), 50));
         e.setZodiacA(truncate(triA.sun(), 20));
         e.setMoonA(truncate(triA.moon(), 20));
         e.setRisingA(truncate(triA.rising(), 20));
@@ -929,6 +942,9 @@ public class CompatibilityService {
             e.setUserBBirthDate(truncate(b.getBirthDate(), 20));
             e.setUserBBirthTime(truncate(b.getBirthTime(), 10));
             e.setUserBBirthPlace(truncate(b.getBirthPlace(), 50));
+            e.setUserBBirthLatitude(b.getBirthLatitude());
+            e.setUserBBirthLongitude(b.getBirthLongitude());
+            e.setUserBBirthTimezone(truncate(b.getBirthTimezone(), 50));
             e.setZodiacB(truncate(triB.sun(), 20));
             e.setMoonB(truncate(triB.moon(), 20));
             e.setRisingB(truncate(triB.rising(), 20));
@@ -967,6 +983,51 @@ public class CompatibilityService {
     private boolean isSingleReport(String reportType) {
         return CompatibilityRequest.REPORT_TYPE_CAREER.equals(reportType)
                 || CompatibilityRequest.REPORT_TYPE_WEALTH.equals(reportType);
+    }
+
+    /**
+     * 计算星座三元组（太阳/月亮/上升）
+     * 优先使用 Swiss Ephemeris 精确计算（需要经纬度），否则使用简化算法
+     */
+    private ZodiacCalculator.ZodiacTriplet computeZodiacTriplet(CompatibilityRequest.Person person) {
+        if (person == null) {
+            return new ZodiacCalculator.ZodiacTriplet("未知", "未知", "未知");
+        }
+        
+        // 如果有经纬度信息，使用 Swiss Ephemeris 精确计算
+        if (hasValidCoordinates(person)) {
+            try {
+                double lat = person.getBirthLatitude();
+                double lon = person.getBirthLongitude();
+                String timezone = person.getBirthTimezone();
+                if (timezone == null || timezone.isBlank()) {
+                    timezone = "Asia/Shanghai";
+                }
+                
+                String sun = swissEphemerisCalculator.computeSun(person.getBirthDate(), person.getBirthTime(), timezone);
+                String moon = swissEphemerisCalculator.computeMoon(person.getBirthDate(), person.getBirthTime(), timezone);
+                String rising = swissEphemerisCalculator.computeRising(
+                        person.getBirthDate(), person.getBirthTime(), timezone, lat, lon);
+                
+                log.info("Swiss Ephemeris 精确计算: {} -> 太阳:{}, 月亮:{}, 上升:{}", 
+                        person.getName(), sun, moon, rising);
+                return new ZodiacCalculator.ZodiacTriplet(sun, moon, rising);
+            } catch (Exception e) {
+                log.warn("Swiss Ephemeris 计算失败，使用回退算法: {}", e.getMessage());
+            }
+        }
+        
+        // 使用简化算法
+        return ZodiacCalculator.computeAll(person.getBirthDate(), person.getBirthTime());
+    }
+    
+    private boolean hasValidCoordinates(CompatibilityRequest.Person person) {
+        if (person == null) return false;
+        Double lat = person.getBirthLatitude();
+        Double lon = person.getBirthLongitude();
+        return lat != null && lon != null 
+                && lat >= -90 && lat <= 90 
+                && lon >= -180 && lon <= 180;
     }
 
     private String reportTypeName(String reportType) {

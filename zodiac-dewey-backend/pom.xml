@@ -21,6 +21,13 @@
         <java.version>17</java.version>
     </properties>
 
+    <repositories>
+        <repository>
+            <id>jitpack.io</id>
+            <url>https://jitpack.io</url>
+        </repository>
+    </repositories>
+
     <dependencies>
         <!-- Web -->
         <dependency>
@@ -65,6 +72,22 @@
             <groupId>com.github.ben-manes.caffeine</groupId>
             <artifactId>caffeine</artifactId>
         </dependency>
+
+        <!-- Swiss Ephemeris - 精确天文计算 -->
+        <!-- 
+            使用方法:
+            1. 从 https://github.com/yestinchen/swisseph/releases 下载 JAR
+            2. 放入 lib/ 目录
+            3. 取消下面的注释
+            
+            <dependency>
+                <groupId>com.github.yestinchen</groupId>
+                <artifactId>swisseph</artifactId>
+                <version>2.10.3</version>
+                <scope>system</scope>
+                <systemPath>${project.basedir}/lib/swisseph-2.10.3.jar</systemPath>
+            </dependency>
+        -->
 
         <!-- Test -->
         <dependency>
