@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.zodiac.api.dto.CompatibilityRequest;
 import com.zodiac.api.dto.CompatibilityResponse;
 import com.zodiac.api.repository.SoulmateReportRepository;
+import com.zodiac.api.util.SwissEphemerisCalculator;
 import com.zodiac.api.util.ZodiacCalculator;
 import org.junit.jupiter.api.Test;
 
@@ -17,7 +18,8 @@ class CompatibilityServiceTest {
                     mock(AiChatService.class),
                     mock(SoulmateReportRepository.class),
                     new ZodiacScoringService(),
-                    new ObjectMapper()
+                    new ObjectMapper(),
+                    new SwissEphemerisCalculator()
             );
 
     @Test
