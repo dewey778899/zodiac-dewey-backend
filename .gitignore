@@ -1,80 +1,26 @@
-# Compiled class file
+# Backend build artifacts
+target/
+*.jar
 *.class
 
-# Log file
+# Logs
 *.log
 
-# BlueJ files
-*.ctxt
-
-# Mobile Tools for Java (J2ME)
-.mtj.tmp/
-
-# Package Files #
-*.jar
-*.war
-*.nar
-*.ear
-*.zip
-*.tar.gz
-*.rar
-
-# virtual machine crash logs
-hs_err_pid*
-replay_pid*
-
-# Maven
-target/
-pom.xml.tag
-pom.xml.releaseBackup
-pom.xml.versionsBackup
-pom.xml.next
-release.properties
-dependency-reduced-pom.xml
-buildNumber.properties
-.mvn/timing.properties
-.mvn/wrapper/maven-wrapper.jar
+# Database files
+data/
 
 # IDE
 .idea/
 *.iml
-*.iws
-*.ipr
 .vscode/
-*.swp
-*.swo
-*~
-
-# Node.js
-node_modules/
-npm-debug.log*
-yarn-debug.log*
-yarn-error.log*
-package-lock.json
-
-# Environment variables
-.env
-.env.local
-.env.*.local
-
-# Application specific
-*.db
-*.sqlite
-*.sqlite3
-data/
-logs/
 
 # OS
 .DS_Store
 Thumbs.db
 
-# Workbuddy
+# Environment & secrets
+.env
+.env.local
+
+# Misc
 .workbuddy/
-
-# Frontend build
-zodiac-dewey-frontend/dist/
-zodiac-dewey-frontend/build/
-
-# Backend build
-zodiac-dewey-backend/target/
-zodiac-dewey-backend/build/
