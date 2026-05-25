@@ -1,6 +1,7 @@
 package com.zodiac.api.util;
 
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.stereotype.Component;
 
 import java.time.LocalDate;
 import java.time.LocalTime;
@@ -19,6 +20,7 @@ import java.time.ZonedDateTime;
  * 未来可替换为 Swiss Ephemeris JNI 绑定以获得更高精度
  */
 @Slf4j
+@Component
 public class SwissEphemerisCalculator {
 
     private static final String[] ZODIAC_NAMES = {
