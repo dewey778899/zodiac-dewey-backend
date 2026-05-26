@@ -1,0 +1,82 @@
+server:
+  port: ${SERVER_PORT:8080}
+  servlet:
+    context-path: /
+  compression:
+    enabled: true
+    mime-types: application/json,text/html,text/css,application/javascript
+  forward-headers-strategy: native
+
+management:
+  server:
+    port: ${MANAGEMENT_PORT:59999}
+
+spring:
+  application:
+    name: zodiac-dewey
+
+  datasource:
+    url: ${DB_URL:jdbc:sqlite:./data/zodiac_dewey.db}
+    driver-class-name: ${DB_DRIVER:org.sqlite.JDBC}
+    hikari:
+      maximum-pool-size: 1
+      minimum-idle: 1
+      connection-timeout: 30000
+
+  jpa:
+    hibernate:
+      ddl-auto: ${JPA_DDL_AUTO:update}
+    show-sql: false
+    properties:
+      hibernate:
+        dialect: ${HIBERNATE_DIALECT:org.hibernate.community.dialect.SQLiteDialect}
+        format_sql: true
+        jdbc:
+          use_get_generated_keys: ${HIBERNATE_USE_GET_GENERATED_KEYS:false}
+
+  jackson:
+    default-property-inclusion: non_null
+
+# ============ AI API ============
+ai:
+  api:
+    key: ${AI_API_KEY:}
+    url: ${AI_API_URL:https://api.deepseek.com/chat/completions}
+    model: ${AI_MODEL:deepseek-chat}
+    max-tokens: ${AI_MAX_TOKENS:8000}
+    timeout-seconds: ${AI_TIMEOUT_SECONDS:180}
+    retry-count: ${AI_RETRY_COUNT:1}
+    claude:
+      key: ${CLAUDE_API_KEY:}
+      url: ${CLAUDE_API_URL:https://api.anthropic.com/v1/messages}
+      model: ${CLAUDE_MODEL:claude-sonnet-4-6}
+      max-tokens: ${CLAUDE_MAX_TOKENS:8000}
+      timeout-seconds: ${CLAUDE_TIMEOUT_SECONDS:120}
+    proxy:
+      host: ${AI_PROXY_HOST:}
+      port: ${AI_PROXY_PORT:0}
+
+# ============ 业务限流(防止 API 烧钱)============
+ratelimit:
+  daily-total: ${RATELIMIT_DAILY_TOTAL:200}
+  per-ip-daily: ${RATELIMIT_PER_IP:3}
+  claude-per-ip-daily: ${RATELIMIT_CLAUDE_PER_IP:5}
+  enabled: ${RATELIMIT_ENABLED:true}
+
+# ============ CORS 跨域 ============
+cors:
+  allowed-origins: ${CORS_ALLOWED_ORIGINS:http://localhost:5173,http://127.0.0.1:5173,http://localhost:8080,http://localhost:3000,http://127.0.0.1:3000,http://192.168.1.168:3000}
+
+admin:
+  username: ${ADMIN_USERNAME:dewey}
+  password: ${ADMIN_PASSWORD:dewey}
+  session-hours: ${ADMIN_SESSION_HOURS:12}
+
+# ============ 日志 ============
+logging:
+  level:
+    com.zodiac.api: INFO
+    org.hibernate.SQL: WARN
+    root: WARN
+  pattern:
+    console: "%d{yyyy-MM-dd HH:mm:ss} %-5level [%thread] %logger{36} - %msg%n"

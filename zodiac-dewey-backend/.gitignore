@@ -1,0 +1,26 @@
+# Backend build artifacts
+target/
+*.jar
+*.class
+
+# Logs
+*.log
+
+# Database files
+data/
+
+# IDE
+.idea/
+*.iml
+.vscode/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Environment & secrets
+.env
+.env.local
+
+# Misc
+.workbuddy/
