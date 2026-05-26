@@ -76,16 +76,8 @@ public class CompatibilityService {
         String systemPrompt = buildSystemPrompt(isPremium, reportType);
         String userPrompt = buildUserPrompt(request, triA, triB, isPremium, score, relType, reportType);
         String selectedModel = request.getModel() != null ? request.getModel() : DEFAULT_MODEL;
-        String raw = null;
-        CompatibilityResponse response;
-        try {
-            raw = aiChatService.generate(systemPrompt, userPrompt, selectedModel);
-            response = buildResponseWithScore(raw, request, triA, triB, score, relType, reportType);
-        } catch (AiServiceException e) {
-            log.error("AI generation failed, falling back to deterministic report: {}", e.getMessage(), e);
-            raw = "{\"fallback\":true,\"reason\":\"" + e.getReason() + "\"}";
-            response = buildFallbackResponse(request, triA, triB, raw, score, relType, reportType);
-        }
+        String raw = aiChatService.generate(systemPrompt, userPrompt, selectedModel);
+        CompatibilityResponse response = buildResponseWithScore(raw, request, triA, triB, score, relType, reportType);
 
         // 附加表单信息,方便前端渲染
         response.setPersonA(buildPersonInfo(request.getPersonA()));
