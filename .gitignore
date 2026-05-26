@@ -1,0 +1,31 @@
+# Backend build artifacts
+target/
+*.jar
+*.class
+
+# Logs
+*.log
+logs/
+
+# Database files
+data/
+*.db
+*.sqlite
+*.sqlite3
+
+# IDE
+.idea/
+*.iml
+.vscode/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Environment & secrets
+.env
+.env.local
+
+# Misc
+.workbuddy/
+*.pid
