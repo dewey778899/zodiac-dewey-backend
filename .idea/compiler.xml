@@ -8,14 +8,17 @@
         <sourceTestOutputDir name="target/generated-test-sources/test-annotations" />
         <outputRelativeToContentRoot value="true" />
         <module name="zodiac-dewey" />
+        <module name="zodiac" />
       </profile>
     </annotationProcessing>
     <bytecodeTargetLevel>
+      <module name="zodiac" target="17" />
       <module name="zodiac-dewey" target="17" />
     </bytecodeTargetLevel>
   </component>
   <component name="JavacSettings">
     <option name="ADDITIONAL_OPTIONS_OVERRIDE">
+      <module name="zodiac" options="-parameters" />
       <module name="zodiac-dewey" options="-parameters" />
     </option>
   </component>

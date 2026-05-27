@@ -12,6 +12,15 @@
 # ==========================================
 
 services:
+  frontend:
+    image: registry.cn-shanghai.aliyuncs.com/dewey_zodiac/zodiac-dewey-frontend:latest
+    container_name: zodiac-frontend
+    ports:
+      - "80:80"
+    depends_on:
+      - backend
+    restart: unless-stopped
+
   backend:
     image: registry.cn-shanghai.aliyuncs.com/dewey_zodiac/zodiac-dewey-backend:latest
     container_name: zodiac-backend

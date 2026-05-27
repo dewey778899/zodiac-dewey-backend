@@ -7,6 +7,7 @@ on:
       - 'src/**'
       - 'pom.xml'
       - 'Dockerfile'
+      - 'docker-compose.yml'
       - '.github/workflows/docker-build.yml'
   workflow_dispatch:
 
@@ -55,6 +56,17 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
+      - name: Sync docker compose to ECS
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ secrets.ECS_HOST }}
+          port: ${{ secrets.ECS_PORT }}
+          username: ${{ secrets.ECS_USER }}
+          key: ${{ secrets.ECS_SSH_KEY }}
+          source: "docker-compose.yml"
+          target: ${{ env.DEPLOY_PATH }}
+          overwrite: true
+
       - name: Deploy to ECS
         uses: appleboy/ssh-action@v1.2.0
         with:
@@ -70,8 +82,20 @@ jobs:
             echo "${{ secrets.ACR_PASSWORD }}" | docker login -u "${{ secrets.ACR_USERNAME }}" --password-stdin ${{ env.REGISTRY }} 2>/dev/null || true
 
             # 拉取新镜像并重启
-            docker compose pull
-            docker compose up -d --force-recreate
+            docker compose pull backend
+            docker compose up -d --force-recreate backend
+            docker compose ps backend
+
+            for i in $(seq 1 20); do
+              if curl -fsS http://127.0.0.1:8080/api/health >/dev/null; then
+                break
+              fi
+              if [ "$i" -eq 20 ]; then
+                echo "Backend deployment verification failed"
+                exit 1
+              fi
+              sleep 3
+            done
 
             # 清理旧镜像, 释放磁盘
             docker image prune -f
