@@ -67,7 +67,7 @@ ratelimit:
 
 # ============ CORS 跨域 ============
 cors:
-  allowed-origins: ${CORS_ALLOWED_ORIGINS:http://localhost:5173,http://127.0.0.1:5173,http://localhost:8080,http://localhost:3000,http://127.0.0.1:3000,http://192.168.1.168:3000}
+  allowed-origins: ${CORS_ALLOWED_ORIGINS:http://localhost:5173,http://127.0.0.1:5173,http://localhost:8080,http://localhost:3000,http://127.0.0.1:3000,http://192.168.*:3000,http://192.168.*:8080,http://10.*:3000,http://10.*:8080,http://172.16.*:3000,http://172.16.*:8080,http://172.17.*:3000,http://172.17.*:8080,http://172.18.*:3000,http://172.18.*:8080,http://172.19.*:3000,http://172.19.*:8080,http://172.20.*:3000,http://172.20.*:8080,http://172.21.*:3000,http://172.21.*:8080,http://172.22.*:3000,http://172.22.*:8080,http://172.23.*:3000,http://172.23.*:8080,http://172.24.*:3000,http://172.24.*:8080,http://172.25.*:3000,http://172.25.*:8080,http://172.26.*:3000,http://172.26.*:8080,http://172.27.*:3000,http://172.27.*:8080,http://172.28.*:3000,http://172.28.*:8080,http://172.29.*:3000,http://172.29.*:8080,http://172.30.*:3000,http://172.30.*:8080,http://172.31.*:3000,http://172.31.*:8080}
 
 admin:
   username: ${ADMIN_USERNAME:dewey}
