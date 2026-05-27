@@ -10,8 +10,12 @@ import com.zodiac.api.util.SwissEphemerisCalculator;
 import com.zodiac.api.util.ZodiacCalculator;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.core.io.ClassPathResource;
 import org.springframework.stereotype.Service;
+import org.springframework.util.StreamUtils;
 
+import java.io.IOException;
+import java.nio.charset.StandardCharsets;
 import java.security.SecureRandom;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
@@ -44,6 +48,11 @@ public class CompatibilityService {
     private static final Pattern PROMPT_INJECTION_CLEAN =
             Pattern.compile("[\\x00-\\x08\\x0B\\x0C\\x0E-\\x1F]");
     private static final String DEFAULT_MODEL = "deepseek";
+    private static final String PROMPT_BASE_PATH = "prompts/";
+    private static final String DEEPSEEK_MODEL = "deepseek";
+    private static final String CLAUDE_MODEL = "claude";
+    private static final String DEEPSEEK_ADDON = "model-deepseek-addon.txt";
+    private static final String CLAUDE_ADDON = "model-claude-addon.txt";
 
 
     public CompatibilityResponse generateReport(CompatibilityRequest request, String ip, String userAgent) {
@@ -65,7 +74,8 @@ public class CompatibilityService {
                     request.getPersonB().getName(), triB.sun(), triB.moon(), triB.rising());
         }
 
-        boolean isPremium = "claude".equalsIgnoreCase(request.getModel());
+        String selectedModel = normalizeModelCode(request.getModel());
+        boolean isPremium = CLAUDE_MODEL.equals(selectedModel);
         int score = singleReport
                 ? scoringService.calculatePersonalScore(request, triA, reportType)
                 : scoringService.calculateScore(request, triA, triB);
@@ -73,10 +83,12 @@ public class CompatibilityService {
                 ? scoringService.inferPersonalType(score, triA.sun(), reportType)
                 : scoringService.inferRelationshipType(score, triA.sun(), triB.sun());
 
-        String systemPrompt = buildSystemPrompt(isPremium, reportType);
+        String systemPrompt = buildSystemPrompt(reportType, isPremium, selectedModel);
+        String deepSeekFallbackSystemPrompt = CLAUDE_MODEL.equals(selectedModel)
+                ? buildSystemPrompt(reportType, isPremium, DEEPSEEK_MODEL)
+                : systemPrompt;
         String userPrompt = buildUserPrompt(request, triA, triB, isPremium, score, relType, reportType);
-        String selectedModel = request.getModel() != null ? request.getModel() : DEFAULT_MODEL;
-        String raw = aiChatService.generate(systemPrompt, userPrompt, selectedModel);
+        String raw = aiChatService.generate(systemPrompt, userPrompt, selectedModel, deepSeekFallbackSystemPrompt);
         CompatibilityResponse response = buildResponseWithScore(raw, request, triA, triB, score, relType, reportType);
 
         // 附加表单信息,方便前端渲染
@@ -171,14 +183,40 @@ public class CompatibilityService {
                 .build();
     }
 
-    private String buildSystemPrompt(boolean isPremium, String reportType) {
-        if (isSingleReport(reportType)) {
-            return buildSingleSystemPrompt(isPremium, reportType);
+    private String buildSystemPrompt(String reportType, boolean isPremium, String modelCode) {
+        String themePrompt = loadPrompt(resolveSystemPromptKey(reportType, isPremium));
+        String modelAddon = loadPrompt(resolveModelAddonKey(modelCode));
+        return themePrompt + System.lineSeparator() + System.lineSeparator() + modelAddon;
+    }
+
+    private String resolveSystemPromptKey(String reportType, boolean isPremium) {
+        String normalizedReportType = normalizeReportType(reportType);
+        String tier = isPremium ? "premium" : "free";
+        return normalizedReportType + "-" + tier + "-system.txt";
+    }
+
+    private String resolveModelAddonKey(String modelCode) {
+        return CLAUDE_MODEL.equalsIgnoreCase(modelCode) ? CLAUDE_ADDON : DEEPSEEK_ADDON;
+    }
+
+    private String loadPrompt(String promptKey) {
+        String resourcePath = PROMPT_BASE_PATH + promptKey;
+        ClassPathResource resource = new ClassPathResource(resourcePath);
+        if (!resource.exists()) {
+            log.error("System prompt file not found: {}", resourcePath);
+            throw new IllegalStateException("Missing system prompt file: " + resourcePath);
         }
-        if (isPremium) {
-            return buildPremiumSystemPrompt();
+        try {
+            String prompt = StreamUtils.copyToString(resource.getInputStream(), StandardCharsets.UTF_8).trim();
+            if (prompt.isBlank()) {
+                log.error("System prompt file is blank: {}", resourcePath);
+                throw new IllegalStateException("Blank system prompt file: " + resourcePath);
+            }
+            return prompt;
+        } catch (IOException e) {
+            log.error("Failed to load system prompt file: {}", resourcePath, e);
+            throw new IllegalStateException("Failed to load system prompt file: " + resourcePath, e);
         }
-        return buildFreeSystemPrompt();
     }
 
     private String buildFreeSystemPrompt() {
@@ -1042,7 +1080,7 @@ public class CompatibilityService {
     }
 
     private String normalizeModelCode(String modelCode) {
-        return "claude".equalsIgnoreCase(modelCode) ? "claude" : DEFAULT_MODEL;
+        return CLAUDE_MODEL.equalsIgnoreCase(modelCode) ? CLAUDE_MODEL : DEFAULT_MODEL;
     }
 
     private String sanitizeForPrompt(String input) {

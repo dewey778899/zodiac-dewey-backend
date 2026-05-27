@@ -12,6 +12,8 @@ management:
     port: ${MANAGEMENT_PORT:59999}
 
 spring:
+  config:
+    import: optional:file:.env[.properties]
   application:
     name: zodiac-dewey
 
@@ -40,7 +42,7 @@ spring:
 # ============ AI API ============
 ai:
   api:
-    key: ${AI_API_KEY:}
+    key: ${AI_API_KEY:${DEEPSEEK_API_KEY:}}
     url: ${AI_API_URL:https://api.deepseek.com/chat/completions}
     model: ${AI_MODEL:deepseek-chat}
     max-tokens: ${AI_MAX_TOKENS:8000}

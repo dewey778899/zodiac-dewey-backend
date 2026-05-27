@@ -123,13 +123,17 @@ public class AiChatService {
     }
 
     public String generate(String systemPrompt, String userPrompt, String modelChoice) {
+        return generate(systemPrompt, userPrompt, modelChoice, systemPrompt);
+    }
+
+    public String generate(String systemPrompt, String userPrompt, String modelChoice, String deepSeekFallbackSystemPrompt) {
         if ("claude".equalsIgnoreCase(modelChoice)) {
             try {
                 return generateWithClaude(systemPrompt, userPrompt);
             } catch (AiServiceException error) {
                 if (shouldFallbackToDeepSeek(error)) {
                     log.warn("Claude returned 403, falling back to DeepSeek for this request.");
-                    return generateWithDeepSeek(systemPrompt, userPrompt);
+                    return generateWithDeepSeek(deepSeekFallbackSystemPrompt, userPrompt);
                 }
                 throw error;
             }
