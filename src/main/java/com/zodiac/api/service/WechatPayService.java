@@ -23,7 +23,10 @@ public class WechatPayService {
 
     public Map<String, Object> buildPayPayload(PayOrder order, PaymentCreateOrderRequest request) {
         if (!config.isEnabled()) {
-            throw new PaymentException("wechat_disabled", "微信支付未开启", HttpStatus.SERVICE_UNAVAILABLE);
+            if (!paymentProperties.isDevMockEnabled()) {
+                throw new PaymentException("wechat_disabled", "微信支付未开启", HttpStatus.SERVICE_UNAVAILABLE);
+            }
+            return buildMockPayload(order, request);
         }
         ensureConfigured();
 
@@ -66,6 +69,41 @@ public class WechatPayService {
         payload.put("expireMinutes", paymentProperties.getOrderExpireMinutes());
         payload.put("notifyUrl", config.getNotifyUrl());
         payload.put("enabled", true);
+        return payload;
+    }
+
+    private Map<String, Object> buildMockPayload(PayOrder order, PaymentCreateOrderRequest request) {
+        Map<String, Object> payload = new LinkedHashMap<>();
+        String scene = normalizeScene(request.getScene());
+        if ("wechat_jsapi".equals(scene)) {
+            order.setTradeType(PayOrder.TRADE_TYPE_JSAPI);
+            order.setWechatPrepayId("mock_prepay_" + order.getOutTradeNo());
+            payload.put("appId", "mock-wechat-app");
+            payload.put("timeStamp", String.valueOf(System.currentTimeMillis() / 1000));
+            payload.put("nonceStr", "mocknonce");
+            payload.put("package", "prepay_id=" + order.getWechatPrepayId());
+            payload.put("signType", "RSA");
+            payload.put("paySign", "MOCK_PAY_SIGN");
+            payload.put("mode", "JSAPI");
+        } else if ("wechat_h5".equals(scene)) {
+            order.setTradeType(PayOrder.TRADE_TYPE_H5);
+            String mwebUrl = (order.getReturnUrl() == null || order.getReturnUrl().isBlank())
+                    ? "http://127.0.0.1:5173/?mock_wechat_h5=1"
+                    : order.getReturnUrl();
+            order.setWechatMwebUrl(mwebUrl);
+            payload.put("mwebUrl", mwebUrl);
+            payload.put("mode", "H5");
+        } else {
+            order.setTradeType(PayOrder.TRADE_TYPE_NATIVE);
+            String codeUrl = "mock-wechat://" + order.getOutTradeNo();
+            order.setWechatCodeUrl(codeUrl);
+            payload.put("codeUrl", codeUrl);
+            payload.put("mode", "NATIVE");
+        }
+        payload.put("enabled", false);
+        payload.put("mock", true);
+        payload.put("mockHint", "当前为本地开发模拟支付，可在后台补单或调用 dev/mark-paid 完成测试。");
+        payload.put("expireMinutes", paymentProperties.getOrderExpireMinutes());
         return payload;
     }
 

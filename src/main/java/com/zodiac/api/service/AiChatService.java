@@ -3,18 +3,11 @@ package com.zodiac.api.service;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import jakarta.annotation.PostConstruct;
-import org.springframework.beans.factory.annotation.Autowired;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.http.HttpHeaders;
-import org.springframework.http.HttpStatus;
-import org.springframework.http.MediaType;
-import org.springframework.http.client.reactive.ReactorClientHttpConnector;
-import org.springframework.web.reactive.function.client.WebClientResponseException;
 import org.springframework.stereotype.Service;
-import org.springframework.web.reactive.function.client.WebClient;
 import reactor.core.Exceptions;
-import reactor.netty.http.client.HttpClient;
 
 import java.net.InetSocketAddress;
 import java.net.URI;
@@ -28,7 +21,6 @@ import java.util.Map;
 @Service
 public class AiChatService {
 
-    private WebClient webClient;
     private java.net.http.HttpClient javaHttpClient;
 
     @Autowired
@@ -75,26 +67,7 @@ public class AiChatService {
 
     @PostConstruct
     public void init() {
-        this.webClient = buildWebClient(timeoutSeconds, "DeepSeek");
         this.javaHttpClient = buildJavaHttpClient();
-    }
-
-    private WebClient buildWebClient(int timeoutSecs, String name) {
-        HttpClient httpClient = HttpClient.create()
-                .responseTimeout(Duration.ofSeconds(timeoutSecs));
-        // 显式不启用系统代理(ALL_PROXY 等),避免走 ClashX 代理被 403
-        httpClient = httpClient.noProxy();
-        if (proxyHost != null && !proxyHost.isBlank() && proxyPort != null && proxyPort > 0) {
-            log.info("{} WebClient uses proxy {}:{}", name, proxyHost, proxyPort);
-            httpClient = httpClient.proxy(proxy -> proxy
-                    .type(reactor.netty.transport.ProxyProvider.Proxy.HTTP)
-                    .address(new InetSocketAddress(proxyHost, proxyPort)));
-        }
-        return WebClient.builder()
-                .clientConnector(new ReactorClientHttpConnector(httpClient))
-                .defaultHeader(HttpHeaders.CONTENT_TYPE, MediaType.APPLICATION_JSON_VALUE)
-                .codecs(c -> c.defaultCodecs().maxInMemorySize(10 * 1024 * 1024))
-                .build();
     }
 
     private java.net.http.HttpClient buildJavaHttpClient() {
@@ -116,6 +89,7 @@ public class AiChatService {
         } else {
             proxySelector = java.net.ProxySelector.of(null);
         }
+
         return java.net.http.HttpClient.newBuilder()
                 .connectTimeout(Duration.ofSeconds(30))
                 .proxy(proxySelector)
@@ -154,14 +128,16 @@ public class AiChatService {
         }
         return executeWithRetry(
                 "DeepSeek",
-                () -> webClient.post()
-                        .uri(apiUrl)
-                        .headers(headers -> headers.setBearerAuth(apiKey))
-                        .bodyValue(buildDeepSeekRequestBody(systemPrompt, userPrompt))
-                        .retrieve()
-                        .bodyToMono(String.class)
-                        .timeout(Duration.ofSeconds(timeoutSeconds))
-                        .block(),
+                () -> sendJsonRequest(
+                        apiUrl,
+                        Map.of(
+                                "Authorization", "Bearer " + apiKey,
+                                "Content-Type", "application/json"
+                        ),
+                        buildDeepSeekRequestBody(systemPrompt, userPrompt),
+                        timeoutSeconds,
+                        "DeepSeek"
+                ),
                 this::extractDeepSeekContent
         );
     }
@@ -190,7 +166,6 @@ public class AiChatService {
         throw new AiServiceException(AiServiceException.Reason.INVALID_RESPONSE, "DeepSeek 返回内容为空或格式异常。");
     }
 
-
     private String generateWithClaude(String systemPrompt, String userPrompt) {
         if (claudeApiKey == null || claudeApiKey.isBlank()) {
             throw new AiServiceException(
@@ -200,24 +175,17 @@ public class AiChatService {
         }
         return executeWithRetry(
                 "Opus 4.7",
-                () -> {
-                    String body = objectMapper.writeValueAsString(buildClaudeRequestBody(systemPrompt, userPrompt));
-                    HttpRequest request = HttpRequest.newBuilder()
-                            .uri(URI.create(claudeApiUrl))
-                            .header("x-api-key", claudeApiKey)
-                            .header("anthropic-version", "2023-06-01")
-                            .header("Content-Type", "application/json")
-                            .POST(HttpRequest.BodyPublishers.ofString(body))
-                            .timeout(Duration.ofSeconds(claudeTimeoutSeconds))
-                            .build();
-                    HttpResponse<String> response = javaHttpClient.send(request, HttpResponse.BodyHandlers.ofString());
-                    if (response.statusCode() >= 400) {
-                        throw new AiServiceException(
-                                AiServiceException.Reason.UPSTREAM_ERROR,
-                                "Claude HTTP " + response.statusCode() + ": " + response.body());
-                    }
-                    return response.body();
-                },
+                () -> sendJsonRequest(
+                        claudeApiUrl,
+                        Map.of(
+                                "x-api-key", claudeApiKey,
+                                "anthropic-version", "2023-06-01",
+                                "Content-Type", "application/json"
+                        ),
+                        buildClaudeRequestBody(systemPrompt, userPrompt),
+                        claudeTimeoutSeconds,
+                        "Claude"
+                ),
                 this::extractClaudeContent
         );
     }
@@ -245,6 +213,26 @@ public class AiChatService {
         throw new AiServiceException(AiServiceException.Reason.INVALID_RESPONSE, "Opus 4.7 返回内容为空或格式异常。");
     }
 
+    private String sendJsonRequest(String url,
+                                   Map<String, String> headers,
+                                   Object body,
+                                   Integer timeoutSecondsValue,
+                                   String provider) throws Exception {
+        String payload = objectMapper.writeValueAsString(body);
+        HttpRequest.Builder builder = HttpRequest.newBuilder()
+                .uri(URI.create(url))
+                .POST(HttpRequest.BodyPublishers.ofString(payload))
+                .timeout(Duration.ofSeconds(timeoutSecondsValue == null ? 90 : timeoutSecondsValue));
+        headers.forEach(builder::header);
+        HttpResponse<String> response = javaHttpClient.send(builder.build(), HttpResponse.BodyHandlers.ofString());
+        if (response.statusCode() >= 400) {
+            throw new AiServiceException(
+                    AiServiceException.Reason.UPSTREAM_ERROR,
+                    provider + " HTTP " + response.statusCode() + ": " + response.body()
+            );
+        }
+        return response.body();
+    }
 
     private String executeWithRetry(String provider, ThrowingSupplier rawSupplier, ThrowingParser parser) {
         AiServiceException lastError = null;
@@ -278,7 +266,7 @@ public class AiChatService {
 
         String message = unwrapped.getMessage();
         if (unwrapped instanceof java.util.concurrent.TimeoutException
-                || (message != null && message.contains("Did not observe any item or terminal signal within"))) {
+                || (message != null && message.contains("timed out"))) {
             log.error("{} timeout", provider, unwrapped);
             return new AiServiceException(
                     AiServiceException.Reason.TIMEOUT,
@@ -287,12 +275,7 @@ public class AiChatService {
             );
         }
 
-        String body = "";
-        if (unwrapped instanceof WebClientResponseException wcre) {
-            body = wcre.getResponseBodyAsString();
-        }
-        log.error("{} call failed, status={}, body={}", provider,
-                unwrapped instanceof WebClientResponseException wcre2 ? wcre2.getStatusCode() : "?", body);
+        log.error("{} call failed: {}", provider, message, unwrapped);
         return new AiServiceException(
                 AiServiceException.Reason.UPSTREAM_ERROR,
                 provider + " 服务暂时不可用，请稍后再试。",

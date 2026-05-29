@@ -1,6 +1,7 @@
 package com.zodiac.api.service;
 
 import com.zodiac.api.config.AlipayConfig;
+import com.zodiac.api.config.PaymentProperties;
 import com.zodiac.api.dto.PaymentCreateOrderRequest;
 import com.zodiac.api.entity.PayOrder;
 import com.zodiac.api.exception.PaymentException;
@@ -16,10 +17,14 @@ import java.util.Map;
 public class AlipayService {
 
     private final AlipayConfig config;
+    private final PaymentProperties paymentProperties;
 
     public Map<String, Object> buildPayPayload(PayOrder order, PaymentCreateOrderRequest request) {
         if (!config.isEnabled()) {
-            throw new PaymentException("alipay_disabled", "支付宝支付未开启", HttpStatus.SERVICE_UNAVAILABLE);
+            if (!paymentProperties.isDevMockEnabled()) {
+                throw new PaymentException("alipay_disabled", "支付宝支付未开启", HttpStatus.SERVICE_UNAVAILABLE);
+            }
+            return buildMockPayload(order);
         }
         ensureConfigured();
 
@@ -38,6 +43,22 @@ public class AlipayService {
         payload.put("signType", config.getSignType());
         payload.put("mode", "WAP");
         payload.put("enabled", true);
+        return payload;
+    }
+
+    private Map<String, Object> buildMockPayload(PayOrder order) {
+        order.setTradeType(PayOrder.TRADE_TYPE_WAP);
+        String payUrl = (order.getReturnUrl() == null || order.getReturnUrl().isBlank())
+                ? "http://127.0.0.1:5173/?mock_alipay=1"
+                : order.getReturnUrl();
+        order.setAlipayFormHtml("<form id=\"alipay-submit\" action=\"" + payUrl + "\" method=\"GET\"></form>");
+        Map<String, Object> payload = new LinkedHashMap<>();
+        payload.put("payUrl", payUrl);
+        payload.put("formHtml", order.getAlipayFormHtml());
+        payload.put("mode", "WAP");
+        payload.put("enabled", false);
+        payload.put("mock", true);
+        payload.put("mockHint", "当前为本地开发模拟支付，可在后台补单或调用 dev/mark-paid 完成测试。");
         return payload;
     }
 

@@ -14,4 +14,5 @@ public class PaymentProperties {
     private long successPollIntervalMs = 3000L;
     private long successPollTimeoutMs = 180000L;
     private boolean fallbackQrEnabled = false;
+    private boolean devMockEnabled = true;
 }

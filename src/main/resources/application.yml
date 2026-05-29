@@ -75,6 +75,7 @@ payment:
     success-poll-interval-ms: ${PAY_SUCCESS_POLL_INTERVAL_MS:3000}
     success-poll-timeout-ms: ${PAY_SUCCESS_POLL_TIMEOUT_MS:180000}
     fallback-qr-enabled: ${PAY_FALLBACK_QR_ENABLED:false}
+    dev-mock-enabled: ${PAY_DEV_MOCK_ENABLED:true}
   wechat:
     enabled: ${WECHAT_PAY_ENABLED:false}
     mch-id: ${WECHAT_PAY_MCH_ID:}
