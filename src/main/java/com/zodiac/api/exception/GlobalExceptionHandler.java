@@ -33,6 +33,14 @@ public class GlobalExceptionHandler {
         ));
     }
 
+    @ExceptionHandler(PaymentException.class)
+    public ResponseEntity<?> payment(PaymentException e) {
+        return ResponseEntity.status(e.getStatus()).body(Map.of(
+                "error", e.getErrorCode(),
+                "message", e.getMessage()
+        ));
+    }
+
     @ExceptionHandler(Exception.class)
     public ResponseEntity<?> generic(Exception e) {
         log.error("未处理异常", e);

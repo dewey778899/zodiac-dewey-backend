@@ -16,7 +16,6 @@ spring:
     import: optional:file:.env[.properties]
   application:
     name: zodiac-dewey
-
   datasource:
     url: ${DB_URL:jdbc:sqlite:./data/zodiac_dewey.db}
     driver-class-name: ${DB_DRIVER:org.sqlite.JDBC}
@@ -24,7 +23,6 @@ spring:
       maximum-pool-size: 1
       minimum-idle: 1
       connection-timeout: 30000
-
   jpa:
     hibernate:
       ddl-auto: ${JPA_DDL_AUTO:update}
@@ -35,11 +33,9 @@ spring:
         format_sql: true
         jdbc:
           use_get_generated_keys: ${HIBERNATE_USE_GET_GENERATED_KEYS:false}
-
   jackson:
     default-property-inclusion: non_null
 
-# ============ AI API ============
 ai:
   api:
     key: ${AI_API_KEY:${DEEPSEEK_API_KEY:}}
@@ -58,14 +54,12 @@ ai:
       host: ${AI_PROXY_HOST:}
       port: ${AI_PROXY_PORT:0}
 
-# ============ 业务限流(防止 API 烧钱)============
 ratelimit:
   daily-total: ${RATELIMIT_DAILY_TOTAL:200}
   per-ip-daily: ${RATELIMIT_PER_IP:3}
   claude-per-ip-daily: ${RATELIMIT_CLAUDE_PER_IP:5}
   enabled: ${RATELIMIT_ENABLED:true}
 
-# ============ CORS 跨域 ============
 cors:
   allowed-origins: ${CORS_ALLOWED_ORIGINS:http://localhost:5173,http://127.0.0.1:5173,http://localhost:8080,http://localhost:3000,http://127.0.0.1:3000,http://192.168.*:3000,http://192.168.*:8080,http://10.*:3000,http://10.*:8080,http://172.16.*:3000,http://172.16.*:8080,http://172.17.*:3000,http://172.17.*:8080,http://172.18.*:3000,http://172.18.*:8080,http://172.19.*:3000,http://172.19.*:8080,http://172.20.*:3000,http://172.20.*:8080,http://172.21.*:3000,http://172.21.*:8080,http://172.22.*:3000,http://172.22.*:8080,http://172.23.*:3000,http://172.23.*:8080,http://172.24.*:3000,http://172.24.*:8080,http://172.25.*:3000,http://172.25.*:8080,http://172.26.*:3000,http://172.26.*:8080,http://172.27.*:3000,http://172.27.*:8080,http://172.28.*:3000,http://172.28.*:8080,http://172.29.*:3000,http://172.29.*:8080,http://172.30.*:3000,http://172.30.*:8080,http://172.31.*:3000,http://172.31.*:8080}
 
@@ -74,7 +68,33 @@ admin:
   password: ${ADMIN_PASSWORD:dewey}
   session-hours: ${ADMIN_SESSION_HOURS:12}
 
-# ============ 日志 ============
+payment:
+  common:
+    amount-fen: ${PAY_AMOUNT_FEN:1990}
+    order-expire-minutes: ${PAY_ORDER_EXPIRE_MINUTES:30}
+    success-poll-interval-ms: ${PAY_SUCCESS_POLL_INTERVAL_MS:3000}
+    success-poll-timeout-ms: ${PAY_SUCCESS_POLL_TIMEOUT_MS:180000}
+    fallback-qr-enabled: ${PAY_FALLBACK_QR_ENABLED:false}
+  wechat:
+    enabled: ${WECHAT_PAY_ENABLED:false}
+    mch-id: ${WECHAT_PAY_MCH_ID:}
+    app-id: ${WECHAT_PAY_APP_ID:}
+    api-v3-key: ${WECHAT_PAY_API_V3_KEY:}
+    mch-serial-no: ${WECHAT_PAY_MCH_SERIAL_NO:}
+    private-key-path: ${WECHAT_PAY_PRIVATE_KEY_PATH:}
+    platform-cert-path: ${WECHAT_PAY_PLATFORM_CERT_PATH:}
+    notify-url: ${WECHAT_PAY_NOTIFY_URL:}
+    h5-return-url: ${WECHAT_PAY_H5_RETURN_URL:}
+    oauth-redirect-url: ${WECHAT_OAUTH_REDIRECT_URL:}
+  alipay:
+    enabled: ${ALIPAY_ENABLED:false}
+    app-id: ${ALIPAY_APP_ID:}
+    private-key-path: ${ALIPAY_PRIVATE_KEY_PATH:}
+    public-key: ${ALIPAY_PUBLIC_KEY:}
+    notify-url: ${ALIPAY_NOTIFY_URL:}
+    return-url: ${ALIPAY_RETURN_URL:}
+    sign-type: ${ALIPAY_SIGN_TYPE:RSA2}
+
 logging:
   file:
     name: ./logs/backend.log

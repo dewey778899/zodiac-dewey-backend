@@ -17,6 +17,9 @@ public class AnalyticsService {
     public static final String EVENT_QR_MODAL_OPEN = "qr_modal_open";
     public static final String EVENT_QR_VIEW = "qr_view";
     public static final String EVENT_QR_SWITCH = "qr_switch";
+    public static final String EVENT_PAYMENT_ORDER_CREATE = "payment_order_create";
+    public static final String EVENT_PAYMENT_ORDER_PAID = "payment_order_paid";
+    public static final String EVENT_PAYMENT_REPAIR = "payment_repair";
 
     private final AnalyticsEventRepository analyticsEventRepository;
 

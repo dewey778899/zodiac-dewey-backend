@@ -11,9 +11,11 @@ public class AdminOverviewResponse {
 
     private MetricsBlock generateClick;
     private MetricsBlock generateSuccess;
-    private QrMetricsBlock qrModalOpen;
-    private QrMetricsBlock qrView;
-    private QrMetricsBlock qrSwitch;
+    private PaymentMetricsBlock paymentCreate;
+    private PaymentMetricsBlock paymentSuccess;
+    private PaymentMetricsBlock callbackFailure;
+    private PaymentMetricsBlock repairCount;
+    private SuccessRateBlock successRate;
     private List<TrendPoint> trends;
 
     @Data
@@ -29,7 +31,7 @@ public class AdminOverviewResponse {
 
     @Data
     @Builder
-    public static class QrMetricsBlock {
+    public static class PaymentMetricsBlock {
         private long total;
         private long today;
         private long wechatTotal;
@@ -40,14 +42,25 @@ public class AdminOverviewResponse {
 
     @Data
     @Builder
+    public static class SuccessRateBlock {
+        private long todayCreated;
+        private long todayPaid;
+        private double todayRate;
+        private long totalCreated;
+        private long totalPaid;
+        private double totalRate;
+    }
+
+    @Data
+    @Builder
     public static class TrendPoint {
         private String date;
         private long deepseekClicks;
         private long claudeClicks;
         private long deepseekSuccess;
         private long claudeSuccess;
-        private long qrModalOpens;
-        private long wechatViews;
-        private long alipayViews;
+        private long paymentCreated;
+        private long paymentPaid;
+        private long callbackFailure;
     }
 }

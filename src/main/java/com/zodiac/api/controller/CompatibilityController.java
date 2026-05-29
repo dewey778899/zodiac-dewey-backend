@@ -7,6 +7,7 @@ import com.zodiac.api.repository.SoulmateReportRepository;
 import com.zodiac.api.service.AiServiceException;
 import com.zodiac.api.service.AnalyticsService;
 import com.zodiac.api.service.CompatibilityService;
+import com.zodiac.api.service.PaymentEntitlementService;
 import com.zodiac.api.service.RateLimitService;
 import com.zodiac.api.util.IpUtil;
 import jakarta.servlet.http.HttpServletRequest;
@@ -29,6 +30,7 @@ public class CompatibilityController {
     private final RateLimitService rateLimitService;
     private final SoulmateReportRepository repository;
     private final AnalyticsService analyticsService;
+    private final PaymentEntitlementService paymentEntitlementService;
 
     @GetMapping("/health")
     public Map<String, Object> health() {
@@ -62,6 +64,15 @@ public class CompatibilityController {
             ));
         }
 
+        boolean premium = "claude".equalsIgnoreCase(request.getModel());
+        if (premium && !paymentEntitlementService.consumeToken(request.getAccessToken())) {
+            rateLimitService.rollback(ip, request.getModel());
+            return ResponseEntity.status(403).body(Map.of(
+                    "error", "payment_required",
+                    "message", "深度解析需要有效且未使用的支付凭证"
+            ));
+        }
+
         try {
             CompatibilityResponse resp = compatibilityService.generateReport(request, ip, ua);
             analyticsService.recordGenerateSuccess(request.getModel(), resp.getReportUid(), ip, ua);
@@ -69,13 +80,12 @@ public class CompatibilityController {
         } catch (AiServiceException e) {
             log.error("AI generation failed: reason={}, message={}", e.getReason(), e.getMessage(), e);
             rateLimitService.rollback(ip, request.getModel());
-            boolean isPremium = "claude".equalsIgnoreCase(request.getModel());
-            if (isPremium) {
+            if (premium) {
                 return ResponseEntity.status(503).body(Map.of(
                         "error", "ai_service_failed",
-                        "message", "深度解析服务暂时不可用，请稍后重试。如已付费，可添加微信 hellodewey 联系退款。",
+                        "message", "深度解析服务暂时不可用，请稍后重试。如已支付，请联系人工处理。",
                         "reason", e.getReason().name(),
-                        "refundHint", "添加微信 hellodewey 可申请退款"
+                        "refundHint", "请联系客服处理支付后的异常订单"
                 ));
             }
             return ResponseEntity.status(503).body(Map.of(
@@ -86,12 +96,11 @@ public class CompatibilityController {
         } catch (Exception e) {
             log.error("Report generation failed, rolling back rate-limit counter", e);
             rateLimitService.rollback(ip, request.getModel());
-            boolean isPremium = "claude".equalsIgnoreCase(request.getModel());
-            if (isPremium) {
+            if (premium) {
                 return ResponseEntity.status(503).body(Map.of(
                         "error", "generation_failed",
-                        "message", "深度解析服务暂时不可用，请稍后重试。如已付费，可添加微信 hellodewey 联系退款。",
-                        "refundHint", "添加微信 hellodewey 可申请退款"
+                        "message", "深度解析服务暂时不可用，请稍后重试。如已支付，请联系客服处理。",
+                        "refundHint", "请联系客服处理支付后的异常订单"
                 ));
             }
             return ResponseEntity.status(500).body(Map.of(
@@ -113,7 +122,7 @@ public class CompatibilityController {
         }
         int updated = repository.updateWechatId(req.getReportUid(), req.getWechatId());
         if (updated > 0) {
-            return ResponseEntity.ok(Map.of("status", "ok", "message", "提交成功，小登哥会看到你的消息"));
+            return ResponseEntity.ok(Map.of("status", "ok", "message", "提交成功，我们会尽快查看"));
         }
         return ResponseEntity.status(404).body(Map.of(
                 "error", "not_found",
@@ -153,7 +162,7 @@ public class CompatibilityController {
                 && request.getPersonA().getGender() != null
                 && request.getPersonB().getGender() != null
                 && request.getPersonA().getGender().equalsIgnoreCase(request.getPersonB().getGender())) {
-            return "爱情合盘暂不支持同一性别，请选择一男一女";
+            return "爱情合盘暂不支持同性别组合，请选择一男一女";
         }
         if (!isLove
                 && !CompatibilityRequest.REPORT_TYPE_CAREER.equalsIgnoreCase(reportType)
