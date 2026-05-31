@@ -2,6 +2,11 @@ package com.zodiac.api.service;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import net.sourceforge.pinyin4j.PinyinHelper;
+import net.sourceforge.pinyin4j.format.HanyuPinyinCaseType;
+import net.sourceforge.pinyin4j.format.HanyuPinyinOutputFormat;
+import net.sourceforge.pinyin4j.format.HanyuPinyinToneType;
+import net.sourceforge.pinyin4j.format.exception.BadHanyuPinyinOutputFormatCombination;
 import com.zodiac.api.dto.CompatibilityRequest;
 import com.zodiac.api.dto.CompatibilityResponse;
 import com.zodiac.api.entity.SoulmateReport;
@@ -20,7 +25,6 @@ import java.security.SecureRandom;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
-import java.util.Iterator;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -36,9 +40,6 @@ public class CompatibilityService {
     private final ZodiacScoringService scoringService;
     private final ObjectMapper objectMapper;
     private final SwissEphemerisCalculator swissEphemerisCalculator;
-    private final SecureRandom rng = new SecureRandom();
-
-    private static final String CHARS = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
     private static final int MIN_CHAPTERS = 6;
     private static final int MIN_ESSENCE = 6;
     private static final int PREMIUM_MIN_CHAPTERS = 8;
@@ -53,6 +54,7 @@ public class CompatibilityService {
     private static final String CLAUDE_MODEL = "claude";
     private static final String DEEPSEEK_ADDON = "model-deepseek-addon.txt";
     private static final String CLAUDE_ADDON = "model-claude-addon.txt";
+    private static final HanyuPinyinOutputFormat PINYIN_FORMAT = buildPinyinFormat();
 
 
     public CompatibilityResponse generateReport(CompatibilityRequest request, String ip, String userAgent) {
@@ -905,7 +907,7 @@ public class CompatibilityService {
     }
 
     private String generateReportUid(String userName) {
-        String normalizedName = sanitizeReportName(userName);
+        String normalizedName = buildReportNamePinyin(userName);
         String uid;
         int attempts = 0;
         do {
@@ -920,13 +922,74 @@ public class CompatibilityService {
         return uid;
     }
 
-    private String sanitizeReportName(String userName) {
-        String normalized = userName == null ? "" : userName.replaceAll("\\s+", "");
-        normalized = normalized.replaceAll("[^\\p{IsHan}A-Za-z0-9_-]", "");
+    private String buildReportNamePinyin(String userName) {
+        String normalized = userName == null ? "" : userName.trim();
         if (normalized.isBlank()) {
-            return "report";
+            return "Report";
         }
-        return normalized.length() > 24 ? normalized.substring(0, 24) : normalized;
+        StringBuilder builder = new StringBuilder();
+        for (char ch : normalized.toCharArray()) {
+            if (Character.isWhitespace(ch) || ch == '-' || ch == '_') {
+                continue;
+            }
+            if (isAsciiAlphaNumeric(ch)) {
+                builder.append(normalizeAsciiChar(ch));
+                continue;
+            }
+            if (isChineseCharacter(ch)) {
+                builder.append(toCapitalizedPinyin(ch));
+            }
+        }
+        String value = builder.toString().replaceAll("[^A-Za-z0-9]", "");
+        if (value.isBlank()) {
+            return "Report";
+        }
+        return value.length() > 32 ? value.substring(0, 32) : value;
+    }
+
+    private static HanyuPinyinOutputFormat buildPinyinFormat() {
+        HanyuPinyinOutputFormat format = new HanyuPinyinOutputFormat();
+        format.setCaseType(HanyuPinyinCaseType.LOWERCASE);
+        format.setToneType(HanyuPinyinToneType.WITHOUT_TONE);
+        return format;
+    }
+
+    private boolean isAsciiAlphaNumeric(char ch) {
+        return (ch >= '0' && ch <= '9')
+                || (ch >= 'A' && ch <= 'Z')
+                || (ch >= 'a' && ch <= 'z');
+    }
+
+    private String normalizeAsciiChar(char ch) {
+        if (ch >= 'A' && ch <= 'Z') {
+            return String.valueOf(ch);
+        }
+        if (ch >= 'a' && ch <= 'z') {
+            return String.valueOf(Character.toUpperCase(ch));
+        }
+        return String.valueOf(ch);
+    }
+
+    private boolean isChineseCharacter(char ch) {
+        Character.UnicodeBlock block = Character.UnicodeBlock.of(ch);
+        return block == Character.UnicodeBlock.CJK_UNIFIED_IDEOGRAPHS
+                || block == Character.UnicodeBlock.CJK_UNIFIED_IDEOGRAPHS_EXTENSION_A
+                || block == Character.UnicodeBlock.CJK_UNIFIED_IDEOGRAPHS_EXTENSION_B
+                || block == Character.UnicodeBlock.CJK_COMPATIBILITY_IDEOGRAPHS;
+    }
+
+    private String toCapitalizedPinyin(char ch) {
+        try {
+            String[] pinyinArray = PinyinHelper.toHanyuPinyinStringArray(ch, PINYIN_FORMAT);
+            if (pinyinArray == null || pinyinArray.length == 0 || pinyinArray[0].isBlank()) {
+                return "";
+            }
+            String pinyin = pinyinArray[0];
+            return Character.toUpperCase(pinyin.charAt(0)) + pinyin.substring(1);
+        } catch (BadHanyuPinyinOutputFormatCombination e) {
+            log.warn("Failed to convert user name char to pinyin: {}", ch, e);
+            return "";
+        }
     }
 
 
