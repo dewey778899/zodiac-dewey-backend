@@ -7,6 +7,7 @@ import com.zodiac.api.dto.AdminOrderLogResponse;
 import com.zodiac.api.dto.AdminOverviewResponse;
 import com.zodiac.api.dto.AdminReportPageResponse;
 import com.zodiac.api.entity.PayOrder;
+import com.zodiac.api.entity.PremiumUnlockRequest;
 import com.zodiac.api.entity.PaymentNotifyLog;
 import com.zodiac.api.exception.AdminAuthException;
 import com.zodiac.api.repository.PayOrderRepository;
@@ -14,6 +15,7 @@ import com.zodiac.api.repository.PaymentNotifyLogRepository;
 import com.zodiac.api.service.AdminAuthService;
 import com.zodiac.api.service.AdminDashboardService;
 import com.zodiac.api.service.PaymentFacadeService;
+import com.zodiac.api.service.PremiumUnlockService;
 import com.zodiac.api.util.IpUtil;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
@@ -41,6 +43,7 @@ public class AdminController {
     private final AdminAuthService adminAuthService;
     private final AdminDashboardService adminDashboardService;
     private final PaymentFacadeService paymentFacadeService;
+    private final PremiumUnlockService premiumUnlockService;
     private final PayOrderRepository payOrderRepository;
     private final PaymentNotifyLogRepository paymentNotifyLogRepository;
 
@@ -156,6 +159,21 @@ public class AdminController {
         resp.put("FAILED", payOrderRepository.countByStatus(PayOrder.STATUS_FAILED));
         resp.put("CLOSED", payOrderRepository.countByStatus(PayOrder.STATUS_CLOSED));
         resp.put("TOTAL", payOrderRepository.count());
+        return ResponseEntity.ok(resp);
+    }
+
+    @GetMapping("/premium-unlocks")
+    public ResponseEntity<?> premiumUnlocks(HttpServletRequest request,
+                                            @RequestParam(defaultValue = "0") int page,
+                                            @RequestParam(defaultValue = "20") int size) {
+        requireAdmin(request);
+        Page<PremiumUnlockRequest> unlockPage = premiumUnlockService.listUnlocks(page, size);
+        Map<String, Object> resp = new LinkedHashMap<>();
+        resp.put("content", unlockPage.getContent().stream().map(premiumUnlockService::toAdminMap).toList());
+        resp.put("totalElements", unlockPage.getTotalElements());
+        resp.put("totalPages", unlockPage.getTotalPages());
+        resp.put("page", page);
+        resp.put("size", size);
         return ResponseEntity.ok(resp);
     }
 

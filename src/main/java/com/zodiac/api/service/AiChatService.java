@@ -47,7 +47,7 @@ public class AiChatService {
     @Value("${ai.api.claude.url:https://api.anthropic.com/v1/messages}")
     private String claudeApiUrl;
 
-    @Value("${ai.api.claude.model:claude-opus-4-7}")
+    @Value("${ai.api.claude.model:claude-opus-4-8}")
     private String claudeModel;
 
     @Value("${ai.api.claude.max-tokens:8000}")

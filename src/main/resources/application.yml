@@ -47,7 +47,7 @@ ai:
     claude:
       key: ${CLAUDE_API_KEY:}
       url: ${CLAUDE_API_URL:https://api.anthropic.com/v1/messages}
-      model: ${CLAUDE_MODEL:claude-opus-4-7}
+      model: ${CLAUDE_MODEL:claude-opus-4-8}
       max-tokens: ${CLAUDE_MAX_TOKENS:8000}
       timeout-seconds: ${CLAUDE_TIMEOUT_SECONDS:120}
     proxy:

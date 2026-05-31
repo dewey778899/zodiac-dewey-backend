@@ -2,12 +2,14 @@ package com.zodiac.api.controller;
 
 import com.zodiac.api.dto.CompatibilityRequest;
 import com.zodiac.api.dto.CompatibilityResponse;
+import com.zodiac.api.dto.PremiumUnlockRequestDto;
 import com.zodiac.api.dto.WechatUpdateRequest;
 import com.zodiac.api.repository.SoulmateReportRepository;
 import com.zodiac.api.service.AiServiceException;
 import com.zodiac.api.service.AnalyticsService;
 import com.zodiac.api.service.CompatibilityService;
 import com.zodiac.api.service.PaymentEntitlementService;
+import com.zodiac.api.service.PremiumUnlockService;
 import com.zodiac.api.service.RateLimitService;
 import com.zodiac.api.util.IpUtil;
 import jakarta.servlet.http.HttpServletRequest;
@@ -31,6 +33,7 @@ public class CompatibilityController {
     private final SoulmateReportRepository repository;
     private final AnalyticsService analyticsService;
     private final PaymentEntitlementService paymentEntitlementService;
+    private final PremiumUnlockService premiumUnlockService;
 
     @GetMapping("/health")
     public Map<String, Object> health() {
@@ -108,6 +111,12 @@ public class CompatibilityController {
                     "message", e.getMessage() != null ? e.getMessage() : "生成失败"
             ));
         }
+    }
+
+    @PostMapping("/premium/douyin-unlock")
+    public ResponseEntity<?> createPremiumUnlock(@Valid @RequestBody PremiumUnlockRequestDto request,
+                                                 HttpServletRequest httpReq) {
+        return ResponseEntity.ok(premiumUnlockService.createDouyinUnlock(request, httpReq));
     }
 
     @PostMapping("/wechat")

@@ -20,6 +20,7 @@ public class PaymentEntitlementService {
     private static final SecureRandom RNG = new SecureRandom();
 
     private final PayOrderRepository payOrderRepository;
+    private final PremiumUnlockService premiumUnlockService;
 
     public boolean isTokenValid(String token) {
         if (token == null || token.isBlank()) {
@@ -27,7 +28,8 @@ public class PaymentEntitlementService {
         }
         return payOrderRepository.findByAccessToken(token)
                 .filter(this::isEntitlementAvailable)
-                .isPresent();
+                .isPresent()
+                || premiumUnlockService.isTokenValid(token);
     }
 
     @Transactional
@@ -35,7 +37,7 @@ public class PaymentEntitlementService {
         if (token == null || token.isBlank()) {
             return false;
         }
-        return payOrderRepository.findByAccessToken(token)
+        boolean paidOrderConsumed = payOrderRepository.findByAccessToken(token)
                 .filter(this::isEntitlementAvailable)
                 .map(order -> {
                     order.setTokenConsumedAt(LocalDateTime.now());
@@ -43,6 +45,7 @@ public class PaymentEntitlementService {
                     return true;
                 })
                 .orElse(false);
+        return paidOrderConsumed || premiumUnlockService.consumeToken(token);
     }
 
     @Transactional
@@ -100,5 +103,9 @@ public class PaymentEntitlementService {
             sb.append(String.format("%02x", b));
         }
         return sb.toString();
+    }
+
+    public String generateAccessToken() {
+        return generateToken();
     }
 }

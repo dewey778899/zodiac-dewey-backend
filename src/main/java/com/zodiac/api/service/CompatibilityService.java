@@ -533,9 +533,12 @@ public class CompatibilityService {
                 JsonNode recovered = tryParseJson(repairCommonJsonIssues(normalized));
                 return buildResponseFromJson(recovered, request, triA, triB, score, relType, reportType);
             } catch (Exception recoveryError) {
-                log.error("AI response recovery failed, falling back to deterministic report. raw preview: {}",
+                log.error("AI response recovery failed, rejecting invalid AI payload. raw preview: {}",
                         preview(raw), recoveryError);
-                return buildFallbackResponse(request, triA, triB, raw, score, relType, reportType);
+                throw new AiServiceException(
+                        AiServiceException.Reason.INVALID_RESPONSE,
+                        "大模型返回内容格式异常，无法生成报告。请稍后重试。"
+                );
             }
         }
     }
@@ -568,7 +571,7 @@ public class CompatibilityService {
                 .reportType(reportType)
                 .chapters(chapters)
                 .essence(essence)
-                .reportUid(generateReportUid(triA.sun(), triB.sun()))
+                .reportUid(generateReportUid(request.getPersonA().getName()))
                 .zodiacA(toZodiacInfo(triA))
                 .zodiacB(isSingleReport(reportType) ? null : toZodiacInfo(triB))
                 .build();
@@ -705,7 +708,7 @@ public class CompatibilityService {
                 .reportType(reportType)
                 .chapters(fallbackChapters(request, triA, triB, isPremium, reportType))
                 .essence(fallbackEssence(request, triA, triB, isPremium, reportType))
-                .reportUid(generateReportUid(triA.sun(), triB.sun()))
+                .reportUid(generateReportUid(request.getPersonA().getName()))
                 .zodiacA(toZodiacInfo(triA))
                 .zodiacB(isSingleReport(reportType) ? null : toZodiacInfo(triB))
                 .build();
@@ -901,47 +904,31 @@ public class CompatibilityService {
                 .build();
     }
 
-    private String generateReportUid(String sunA, String sunB) {
-        String codeA = zodiacToCode(sunA);
-        String codeB = zodiacToCode(sunB);
-        LocalDate d = LocalDate.now();
-        String date = String.format("%02d%02d%02d",
-                d.getYear() % 100, d.getMonthValue(), d.getDayOfMonth());
+    private String generateReportUid(String userName) {
+        String normalizedName = sanitizeReportName(userName);
         String uid;
         int attempts = 0;
         do {
-            StringBuilder rand = new StringBuilder();
-            for (int i = 0; i < 4; i++) {
-                rand.append(CHARS.charAt(rng.nextInt(CHARS.length())));
-            }
-            uid = String.format("N° %s%s-%s-%s", codeA, codeB, date, rand);
+            String timestamp = String.valueOf(System.currentTimeMillis());
+            uid = normalizedName + "-" + timestamp;
             attempts++;
             if (attempts > 10) {
-                String uuid = UUID.randomUUID().toString().substring(0, 8).toUpperCase();
-                uid = String.format("N° %s-%s-%s", uuid, date, rand);
+                uid = normalizedName + "-" + timestamp + "-" + UUID.randomUUID().toString().substring(0, 4).toUpperCase();
                 break;
             }
         } while (repository.findByReportUid(uid).isPresent());
         return uid;
     }
 
-    private String zodiacToCode(String zodiac) {
-        return switch (zodiac) {
-            case "白羊座" -> "AR";
-            case "金牛座" -> "TA";
-            case "双子座" -> "GE";
-            case "巨蟹座" -> "CA";
-            case "狮子座" -> "LE";
-            case "处女座" -> "VI";
-            case "天秤座" -> "LI";
-            case "天蝎座" -> "SC";
-            case "射手座" -> "SA";
-            case "摩羯座" -> "CP";
-            case "水瓶座" -> "AQ";
-            case "双鱼座" -> "PI";
-            default -> "XX";
-        };
+    private String sanitizeReportName(String userName) {
+        String normalized = userName == null ? "" : userName.replaceAll("\\s+", "");
+        normalized = normalized.replaceAll("[^\\p{IsHan}A-Za-z0-9_-]", "");
+        if (normalized.isBlank()) {
+            return "report";
+        }
+        return normalized.length() > 24 ? normalized.substring(0, 24) : normalized;
     }
+
 
     private SoulmateReport toEntity(CompatibilityRequest req, CompatibilityResponse resp,
                                     ZodiacCalculator.ZodiacTriplet triA,
