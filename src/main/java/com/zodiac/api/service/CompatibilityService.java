@@ -47,6 +47,10 @@ public class CompatibilityService {
     private static final int PREMIUM_MIN_ESSENCE = 8;
     private static final Pattern KEYWORD_COMMA_FIX =
             Pattern.compile("(?<=[\\}\"\\]0-9])\\s*\\n\\s*\"(?=[A-Za-z\\u4e00-\\u9fa5_]+\"\\s*:)");
+    private static final Pattern ARRAY_OBJECT_BOUNDARY_FIX =
+            Pattern.compile("}\\s*\\n\\s*\"(?=[A-Za-z\\u4e00-\\u9fa5_]+\"\\s*:)");
+    private static final Pattern MISSING_ARRAY_COMMA_FIX =
+            Pattern.compile("}\\s*\\n\\s*\\{");
     private static final Pattern PROMPT_INJECTION_CLEAN =
             Pattern.compile("[\\x00-\\x08\\x0B\\x0C\\x0E-\\x1F]");
     private static final String DEFAULT_MODEL = "deepseek";
@@ -92,7 +96,16 @@ public class CompatibilityService {
                 : systemPrompt;
         String userPrompt = buildUserPrompt(request, triA, triB, isPremium, score, relType, reportType);
         String raw = aiChatService.generate(systemPrompt, userPrompt, selectedModel, deepSeekFallbackSystemPrompt);
-        CompatibilityResponse response = buildResponseWithScore(raw, request, triA, triB, score, relType, reportType);
+        CompatibilityResponse response;
+        try {
+            response = buildResponseWithScore(raw, request, triA, triB, score, relType, reportType);
+        } catch (AiServiceException error) {
+            if (error.getReason() != AiServiceException.Reason.INVALID_RESPONSE) {
+                throw error;
+            }
+            log.warn("AI payload invalid after recovery, returning fallback report instead. raw preview: {}", preview(raw), error);
+            response = buildFallbackResponse(request, triA, triB, raw, score, relType, reportType);
+        }
 
         // 附加表单信息,方便前端渲染
         response.setPersonA(buildPersonInfo(request.getPersonA()));
@@ -536,7 +549,7 @@ public class CompatibilityService {
                 JsonNode recovered = tryParseJson(repairCommonJsonIssues(normalized));
                 return buildResponseFromJson(recovered, request, triA, triB, score, relType, reportType);
             } catch (Exception recoveryError) {
-                log.error("AI response recovery failed, rejecting invalid AI payload. raw preview: {}",
+                log.error("AI response recovery failed, switching to fallback report. raw preview: {}",
                         preview(raw), recoveryError);
                 throw new AiServiceException(
                         AiServiceException.Reason.INVALID_RESPONSE,
@@ -610,10 +623,17 @@ public class CompatibilityService {
 
     private String repairCommonJsonIssues(String content) {
         String fixed = KEYWORD_COMMA_FIX.matcher(content).replaceAll(",\n\"");
+        fixed = ARRAY_OBJECT_BOUNDARY_FIX.matcher(fixed).replaceAll("},\n\"");
+        fixed = MISSING_ARRAY_COMMA_FIX.matcher(fixed).replaceAll("},\n{");
         if (fixed.length() > content.length() * 2) {
             fixed = content;
         }
-        fixed = fixed.replace("“", "\\\"").replace("”", "\\\"");
+        fixed = fixed
+                .replace("“", "\"")
+                .replace("”", "\"")
+                .replace("‘", "'")
+                .replace("’", "'")
+                .replace("：", ":");
         return fixed;
     }
 

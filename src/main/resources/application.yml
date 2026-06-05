@@ -97,8 +97,6 @@ payment:
     sign-type: ${ALIPAY_SIGN_TYPE:RSA2}
 
 logging:
-  file:
-    name: ./logs/backend.log
   level:
     com.zodiac.api: INFO
     org.hibernate.SQL: WARN
