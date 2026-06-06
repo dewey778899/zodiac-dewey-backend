@@ -23,6 +23,10 @@ spring:
       maximum-pool-size: 1
       minimum-idle: 1
       connection-timeout: 30000
+  sql:
+    init:
+      mode: always
+      continue-on-error: true
   jpa:
     hibernate:
       ddl-auto: ${JPA_DDL_AUTO:update}
