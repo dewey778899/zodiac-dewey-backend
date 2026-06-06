@@ -34,6 +34,24 @@ jobs:
       - name: Build JAR
         run: mvn clean package -DskipTests -B
 
+      - name: Smoke test Spring Boot startup
+        shell: bash
+        run: |
+          set -euo pipefail
+          timeout 10s java -jar target/zodiac-dewey.jar --spring.main.web-application-type=none > smoke.log 2>&1 || status=$?
+          status=${status:-0}
+          if grep -Eq "Logback configuration error detected|is not a valid conversion word|NoClassDefFoundError|Exception in thread|APPLICATION FAILED TO START|BeanCreationException|SQLiteException|H2" smoke.log; then
+            cat smoke.log
+            echo "Smoke test failed: startup log contains fatal errors."
+            exit 1
+          fi
+          if [ "$status" -ne 0 ] && [ "$status" -ne 124 ]; then
+            cat smoke.log
+            echo "Smoke test failed with exit code $status."
+            exit 1
+          fi
+          cat smoke.log
+
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
