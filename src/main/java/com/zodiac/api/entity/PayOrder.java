@@ -45,19 +45,19 @@ public class PayOrder {
     @Column(name = "out_trade_no", length = 64, nullable = false, unique = true)
     private String outTradeNo;
 
-    @Column(name = "channel", length = 20, nullable = false)
+    @Column(name = "channel", length = 20)
     private String channel;
 
-    @Column(name = "trade_type", length = 20, nullable = false)
+    @Column(name = "trade_type", length = 20)
     private String tradeType;
 
     @Column(name = "status", length = 30, nullable = false)
     private String status = STATUS_CREATED;
 
-    @Column(name = "subject", length = 255, nullable = false)
+    @Column(name = "subject", length = 255)
     private String subject;
 
-    @Column(name = "amount_fen", nullable = false)
+    @Column(name = "amount_fen")
     private Integer amountFen;
 
     @Column(name = "client_ip", length = 64)
