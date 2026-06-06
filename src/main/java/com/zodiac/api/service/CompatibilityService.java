@@ -24,11 +24,11 @@ import java.nio.charset.StandardCharsets;
 import java.security.SecureRandom;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Optional;
-import java.util.UUID;
 import java.util.regex.Pattern;
 
 @Slf4j
@@ -58,6 +58,7 @@ public class CompatibilityService {
     private static final String DEEPSEEK_MODEL = "deepseek";
     private static final String CLAUDE_MODEL = "claude";
     private static final String DEEPSEEK_ADDON = "model-deepseek-addon.txt";
+    private static final DateTimeFormatter REPORT_UID_TIMESTAMP = DateTimeFormatter.ofPattern("yyyyMMddHHmmss");
     private static final String CLAUDE_ADDON = "model-claude-addon.txt";
     private static final HanyuPinyinOutputFormat PINYIN_FORMAT = buildPinyinFormat();
 
@@ -928,19 +929,39 @@ public class CompatibilityService {
     }
 
     private String generateReportUid(String userName) {
-        String normalizedName = buildReportNamePinyin(userName);
-        String uid;
+        String initial = extractReportInitial(userName);
+        LocalDateTime now = LocalDateTime.now();
+        String timestamp = now.format(REPORT_UID_TIMESTAMP);
+        String prefix = initial + timestamp;
+        long existingCount = repository.countByReportUidStartingWith(initial + now.toLocalDate().format(DateTimeFormatter.BASIC_ISO_DATE));
+        int sequence = (int) existingCount + 1;
         int attempts = 0;
+        String uid;
         do {
-            String timestamp = String.valueOf(System.currentTimeMillis());
-            uid = normalizedName + "-" + timestamp;
+            uid = prefix + padSequence(sequence + attempts);
             attempts++;
-            if (attempts > 10) {
-                uid = normalizedName + "-" + timestamp + "-" + UUID.randomUUID().toString().substring(0, 4).toUpperCase();
-                break;
-            }
-        } while (repository.findByReportUid(uid).isPresent());
+        } while (repository.findByReportUid(uid).isPresent() && attempts < 1000);
         return uid;
+    }
+
+    private String extractReportInitial(String userName) {
+        String normalized = buildReportNamePinyin(userName);
+        if (normalized.isBlank() || "Report".equals(normalized)) {
+            return "X";
+        }
+        char first = normalized.charAt(0);
+        if (first >= 'a' && first <= 'z') {
+            return String.valueOf(Character.toUpperCase(first));
+        }
+        if ((first >= 'A' && first <= 'Z') || (first >= '0' && first <= '9')) {
+            return String.valueOf(first);
+        }
+        return "X";
+    }
+
+    private String padSequence(int sequence) {
+        int normalized = Math.max(sequence, 1);
+        return String.format("%03d", normalized);
     }
 
     private String buildReportNamePinyin(String userName) {

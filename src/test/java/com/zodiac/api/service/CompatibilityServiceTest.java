@@ -6,21 +6,36 @@ import com.zodiac.api.dto.CompatibilityResponse;
 import com.zodiac.api.repository.SoulmateReportRepository;
 import com.zodiac.api.util.SwissEphemerisCalculator;
 import com.zodiac.api.util.ZodiacCalculator;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
-import static org.junit.jupiter.api.Assertions.*;
+import java.lang.reflect.Method;
+import java.util.Optional;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
 
 class CompatibilityServiceTest {
 
+    private final SoulmateReportRepository repository = mock(SoulmateReportRepository.class);
     private final CompatibilityService service =
             new CompatibilityService(
                     mock(AiChatService.class),
-                    mock(SoulmateReportRepository.class),
+                    repository,
                     new ZodiacScoringService(),
                     new ObjectMapper(),
                     new SwissEphemerisCalculator()
             );
+
+    @BeforeEach
+    void setUp() {
+        when(repository.findByReportUid(anyString())).thenReturn(Optional.empty());
+        when(repository.countByReportUidStartingWith(anyString())).thenReturn(0L);
+    }
 
     @Test
     void parseResponse_recoversMissingCommaJson() {
@@ -50,18 +65,34 @@ class CompatibilityServiceTest {
     }
 
     @Test
-    void parseResponse_fallsBackWhenJsonIsUnusable() {
+    void parseResponse_throwsWhenJsonIsUnusable() {
         CompatibilityRequest request = sampleRequest();
         ZodiacCalculator.ZodiacTriplet triA = new ZodiacCalculator.ZodiacTriplet("金牛座", "射手座", "处女座");
         ZodiacCalculator.ZodiacTriplet triB = new ZodiacCalculator.ZodiacTriplet("狮子座", "双鱼座", "处女座");
 
-        CompatibilityResponse response = service.parseResponse("这不是 JSON", request, triA, triB);
+        assertThrows(AiServiceException.class, () -> service.parseResponse("这不是 JSON", request, triA, triB));
+    }
 
-        assertNotNull(response);
-        assertTrue(response.getScore() >= 60 && response.getScore() <= 95);
-        assertEquals(6, response.getChapters().size());
-        assertEquals(6, response.getEssence().size());
-        assertTrue(response.getTagline().contains("ZhangSan"));
+    @Test
+    void generateReportUid_usesInitialTimestampAndThreeDigitSequence() throws Exception {
+        when(repository.countByReportUidStartingWith(anyString())).thenReturn(0L);
+
+        Method method = CompatibilityService.class.getDeclaredMethod("generateReportUid", String.class);
+        method.setAccessible(true);
+        String uid = (String) method.invoke(service, "Alice");
+
+        assertTrue(uid.matches("^A\\d{14}001$"));
+    }
+
+    @Test
+    void generateReportUid_usesChinesePinyinInitialAndDailyIncrement() throws Exception {
+        when(repository.countByReportUidStartingWith(anyString())).thenReturn(6L);
+
+        Method method = CompatibilityService.class.getDeclaredMethod("generateReportUid", String.class);
+        method.setAccessible(true);
+        String uid = (String) method.invoke(service, "王小美");
+
+        assertTrue(uid.matches("^W\\d{14}007$"));
     }
 
     private CompatibilityRequest sampleRequest() {

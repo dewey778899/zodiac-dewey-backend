@@ -19,6 +19,8 @@ public interface SoulmateReportRepository extends JpaRepository<SoulmateReport, 
 
     Optional<SoulmateReport> findByReportUid(String reportUid);
 
+    long countByReportUidStartingWith(String prefix);
+
     @Query("SELECT COUNT(r) FROM SoulmateReport r WHERE r.createdAt >= :startOfDay")
     long countTodayReports(@Param("startOfDay") LocalDateTime startOfDay);
 
