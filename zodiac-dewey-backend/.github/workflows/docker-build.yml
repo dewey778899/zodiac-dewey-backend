@@ -38,6 +38,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          mkdir -p data
           timeout 10s java -jar target/zodiac-dewey.jar --spring.main.web-application-type=none > smoke.log 2>&1 || status=$?
           status=${status:-0}
           if grep -Eq "Logback configuration error detected|is not a valid conversion word|NoClassDefFoundError|Exception in thread|APPLICATION FAILED TO START|BeanCreationException|SQLiteException|H2" smoke.log; then
