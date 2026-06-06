@@ -77,8 +77,10 @@ public class AiChatService {
             proxySelector = new java.net.ProxySelector() {
                 @Override
                 public List<java.net.Proxy> select(URI uri) {
-                    return List.of(new java.net.Proxy(java.net.Proxy.Type.HTTP,
-                            new InetSocketAddress(proxyHost, proxyPort)));
+                    return List.of(new java.net.Proxy(
+                            java.net.Proxy.Type.HTTP,
+                            new InetSocketAddress(proxyHost, proxyPort)
+                    ));
                 }
 
                 @Override
@@ -100,13 +102,17 @@ public class AiChatService {
         return generate(systemPrompt, userPrompt, modelChoice, systemPrompt);
     }
 
-    public String generate(String systemPrompt, String userPrompt, String modelChoice, String deepSeekFallbackSystemPrompt) {
+    public String generate(String systemPrompt,
+                           String userPrompt,
+                           String modelChoice,
+                           String deepSeekFallbackSystemPrompt) {
         if ("claude".equalsIgnoreCase(modelChoice)) {
             try {
                 return generateWithClaude(systemPrompt, userPrompt);
             } catch (AiServiceException error) {
                 if (shouldFallbackToDeepSeek(error)) {
-                    log.warn("Claude returned 403, falling back to DeepSeek for this request.");
+                    log.warn("Claude unavailable for this request, falling back to DeepSeek with premium prompt: {}",
+                            error.getMessage());
                     return generateWithDeepSeek(deepSeekFallbackSystemPrompt, userPrompt);
                 }
                 throw error;
@@ -163,7 +169,10 @@ public class AiChatService {
                 return content;
             }
         }
-        throw new AiServiceException(AiServiceException.Reason.INVALID_RESPONSE, "DeepSeek 返回内容为空或格式异常。");
+        throw new AiServiceException(
+                AiServiceException.Reason.INVALID_RESPONSE,
+                "DeepSeek 返回内容为空或格式异常"
+        );
     }
 
     private String generateWithClaude(String systemPrompt, String userPrompt) {
@@ -174,7 +183,7 @@ public class AiChatService {
             );
         }
         return executeWithRetry(
-                "Opus 4.7",
+                "Opus 4.8",
                 () -> sendJsonRequest(
                         claudeApiUrl,
                         Map.of(
@@ -210,7 +219,10 @@ public class AiChatService {
                 return text;
             }
         }
-        throw new AiServiceException(AiServiceException.Reason.INVALID_RESPONSE, "Opus 4.7 返回内容为空或格式异常。");
+        throw new AiServiceException(
+                AiServiceException.Reason.INVALID_RESPONSE,
+                "Opus 4.8 返回内容为空或格式异常"
+        );
     }
 
     private String sendJsonRequest(String url,
@@ -255,7 +267,10 @@ public class AiChatService {
 
         throw lastError != null
                 ? lastError
-                : new AiServiceException(AiServiceException.Reason.UPSTREAM_ERROR, provider + " 服务暂时不可用，请稍后再试。");
+                : new AiServiceException(
+                        AiServiceException.Reason.UPSTREAM_ERROR,
+                        provider + " 服务暂时不可用，请稍后再试。"
+                );
     }
 
     private AiServiceException mapAiException(String provider, Exception error) {
@@ -288,7 +303,19 @@ public class AiChatService {
             return false;
         }
         String message = error.getMessage();
-        return message != null && message.contains("Claude HTTP 403");
+        if (message == null || message.isBlank()) {
+            return false;
+        }
+        return message.contains("Claude HTTP 403")
+                || message.contains("Claude HTTP 429")
+                || message.contains("Claude HTTP 500")
+                || message.contains("Claude HTTP 502")
+                || message.contains("Claude HTTP 503")
+                || message.contains("Claude HTTP 504")
+                || message.contains("credit balance is too low")
+                || message.contains("insufficient credits")
+                || message.contains("overloaded_error")
+                || message.contains("rate_limit_error");
     }
 
     @FunctionalInterface

@@ -5,12 +5,14 @@ import com.zodiac.api.exception.PaymentException;
 import com.zodiac.api.repository.PayOrderRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.dao.DataAccessException;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.security.SecureRandom;
 import java.time.LocalDateTime;
+import java.util.Optional;
 
 @Slf4j
 @Service
@@ -26,10 +28,12 @@ public class PaymentEntitlementService {
         if (token == null || token.isBlank()) {
             return false;
         }
-        return payOrderRepository.findByAccessToken(token)
+        if (premiumUnlockService.isTokenValid(token)) {
+            return true;
+        }
+        return findPaidOrderByAccessTokenSafely(token)
                 .filter(this::isEntitlementAvailable)
-                .isPresent()
-                || premiumUnlockService.isTokenValid(token);
+                .isPresent();
     }
 
     @Transactional
@@ -37,7 +41,10 @@ public class PaymentEntitlementService {
         if (token == null || token.isBlank()) {
             return false;
         }
-        boolean paidOrderConsumed = payOrderRepository.findByAccessToken(token)
+        if (premiumUnlockService.consumeToken(token)) {
+            return true;
+        }
+        return findPaidOrderByAccessTokenSafely(token)
                 .filter(this::isEntitlementAvailable)
                 .map(order -> {
                     order.setTokenConsumedAt(LocalDateTime.now());
@@ -45,12 +52,11 @@ public class PaymentEntitlementService {
                     return true;
                 })
                 .orElse(false);
-        return paidOrderConsumed || premiumUnlockService.consumeToken(token);
     }
 
     @Transactional
     public PayOrder requireConsumableToken(String token) {
-        return payOrderRepository.findByAccessToken(token)
+        return findPaidOrderByAccessTokenSafely(token)
                 .filter(this::isEntitlementAvailable)
                 .orElseThrow(() -> new PaymentException(
                         "payment_token_invalid",
@@ -107,5 +113,14 @@ public class PaymentEntitlementService {
 
     public String generateAccessToken() {
         return generateToken();
+    }
+
+    private Optional<PayOrder> findPaidOrderByAccessTokenSafely(String token) {
+        try {
+            return payOrderRepository.findByAccessToken(token);
+        } catch (DataAccessException ex) {
+            log.warn("Legacy pay_order token lookup failed, skip paid-order path: token={}", token, ex);
+            return Optional.empty();
+        }
     }
 }
