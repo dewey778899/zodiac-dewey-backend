@@ -299,23 +299,15 @@ public class AiChatService {
     }
 
     private boolean shouldFallbackToDeepSeek(AiServiceException error) {
-        if (error == null || error.getReason() != AiServiceException.Reason.UPSTREAM_ERROR) {
+        if (error == null) {
             return false;
         }
-        String message = error.getMessage();
-        if (message == null || message.isBlank()) {
-            return false;
-        }
-        return message.contains("Claude HTTP 403")
-                || message.contains("Claude HTTP 429")
-                || message.contains("Claude HTTP 500")
-                || message.contains("Claude HTTP 502")
-                || message.contains("Claude HTTP 503")
-                || message.contains("Claude HTTP 504")
-                || message.contains("credit balance is too low")
-                || message.contains("insufficient credits")
-                || message.contains("overloaded_error")
-                || message.contains("rate_limit_error");
+        // Premium requests should stay usable whenever Claude is unavailable.
+        // If Claude fails for quota, timeout, bad upstream response, or missing config,
+        // we degrade to DeepSeek while keeping the premium prompt chain.
+        return switch (error.getReason()) {
+            case MISCONFIGURED, TIMEOUT, INVALID_RESPONSE, UPSTREAM_ERROR -> true;
+        };
     }
 
     @FunctionalInterface
