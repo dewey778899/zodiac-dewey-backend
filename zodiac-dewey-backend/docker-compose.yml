@@ -20,8 +20,11 @@ services:
     volumes:
       - ./data:/app/data
     environment:
-      - DEEPSEEK_API_KEY=${DEEPSEEK_API_KEY}
+      - AI_API_KEY=${AI_API_KEY:-${DEEPSEEK_API_KEY}}
       - CLAUDE_API_KEY=${CLAUDE_API_KEY}
       - ADMIN_PASSWORD=${ADMIN_PASSWORD}
+      - DB_URL=jdbc:sqlite:/app/data/zodiac_dewey.db
+      - DB_DRIVER=org.sqlite.JDBC
+      - HIBERNATE_DIALECT=org.hibernate.community.dialect.SQLiteDialect
       - TZ=Asia/Shanghai
     restart: unless-stopped
