@@ -13,7 +13,7 @@
     <appender name="ROLLING" class="ch.qos.logback.core.rolling.RollingFileAppender">
         <file>${LOG_FILE}</file>
         <encoder>
-            <pattern>%d{yyyy-MM-dd'T'HH:mm:ss.SSSXXX} %-5level %pid --- [%thread] %logger{36} : %msg%n</pattern>
+            <pattern>%d{yyyy-MM-dd'T'HH:mm:ss.SSSXXX} %-5level [%thread] %logger{36} : %msg%n</pattern>
             <charset>UTF-8</charset>
         </encoder>
         <rollingPolicy class="ch.qos.logback.core.rolling.TimeBasedRollingPolicy">
