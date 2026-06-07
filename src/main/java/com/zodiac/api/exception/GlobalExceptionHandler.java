@@ -46,7 +46,7 @@ public class GlobalExceptionHandler {
         log.error("未处理异常", e);
         return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(Map.of(
                 "error", "internal_error",
-                "message", "服务暂时不可用,请稍后再试"
+                "message", "服务暂时不可用，请稍后再试"
         ));
     }
 }

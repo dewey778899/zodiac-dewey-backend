@@ -9,8 +9,11 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import reactor.core.Exceptions;
 
+import java.io.IOException;
 import java.net.InetSocketAddress;
+import java.net.ProxySelector;
 import java.net.URI;
+import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.time.Duration;
@@ -21,7 +24,8 @@ import java.util.Map;
 @Service
 public class AiChatService {
 
-    private java.net.http.HttpClient javaHttpClient;
+    private HttpClient proxiedHttpClient;
+    private HttpClient directHttpClient;
 
     @Autowired
     private ObjectMapper objectMapper;
@@ -67,14 +71,17 @@ public class AiChatService {
 
     @PostConstruct
     public void init() {
-        this.javaHttpClient = buildJavaHttpClient();
+        this.directHttpClient = buildHttpClient(false);
+        this.proxiedHttpClient = buildHttpClient(true);
     }
 
-    private java.net.http.HttpClient buildJavaHttpClient() {
-        java.net.ProxySelector proxySelector;
-        if (proxyHost != null && !proxyHost.isBlank() && proxyPort != null && proxyPort > 0) {
+    private HttpClient buildHttpClient(boolean useProxy) {
+        HttpClient.Builder builder = HttpClient.newBuilder()
+                .connectTimeout(Duration.ofSeconds(30));
+
+        if (useProxy && hasProxyConfig()) {
             log.info("JavaHttpClient uses proxy {}:{}", proxyHost, proxyPort);
-            proxySelector = new java.net.ProxySelector() {
+            builder.proxy(new ProxySelector() {
                 @Override
                 public List<java.net.Proxy> select(URI uri) {
                     return List.of(new java.net.Proxy(
@@ -84,18 +91,19 @@ public class AiChatService {
                 }
 
                 @Override
-                public void connectFailed(URI uri, java.net.SocketAddress sa, java.io.IOException ioe) {
+                public void connectFailed(URI uri, java.net.SocketAddress sa, IOException ioe) {
                     log.warn("Proxy connect failed to {}: {}", uri, ioe.getMessage());
                 }
-            };
+            });
         } else {
-            proxySelector = java.net.ProxySelector.of(null);
+            builder.proxy(ProxySelector.of(null));
         }
 
-        return java.net.http.HttpClient.newBuilder()
-                .connectTimeout(Duration.ofSeconds(30))
-                .proxy(proxySelector)
-                .build();
+        return builder.build();
+    }
+
+    private boolean hasProxyConfig() {
+        return proxyHost != null && !proxyHost.isBlank() && proxyPort != null && proxyPort > 0;
     }
 
     public String generate(String systemPrompt, String userPrompt, String modelChoice) {
@@ -111,9 +119,17 @@ public class AiChatService {
                 return generateWithClaude(systemPrompt, userPrompt);
             } catch (AiServiceException error) {
                 if (shouldFallbackToDeepSeek(error)) {
-                    log.warn("Claude unavailable for this request, falling back to DeepSeek with premium prompt: {}",
+                    log.warn("Claude unavailable, falling back to DeepSeek with premium prompt: {}",
                             error.getMessage());
-                    return generateWithDeepSeek(deepSeekFallbackSystemPrompt, userPrompt);
+                    try {
+                        return generateWithDeepSeek(deepSeekFallbackSystemPrompt, userPrompt);
+                    } catch (AiServiceException fallbackError) {
+                        throw new AiServiceException(
+                                fallbackError.getReason(),
+                                "Claude 不可用，且 DeepSeek 兜底失败：" + fallbackError.getMessage(),
+                                fallbackError
+                        );
+                    }
                 }
                 throw error;
             }
@@ -129,7 +145,7 @@ public class AiChatService {
         if (apiKey == null || apiKey.isBlank()) {
             throw new AiServiceException(
                     AiServiceException.Reason.MISCONFIGURED,
-                    "AI_API_KEY 未配置，无法生成报告。"
+                    "AI_API_KEY / DEEPSEEK_API_KEY 未配置，无法生成报告。"
             );
         }
         return executeWithRetry(
@@ -183,7 +199,7 @@ public class AiChatService {
             );
         }
         return executeWithRetry(
-                "Opus 4.8",
+                "Claude",
                 () -> sendJsonRequest(
                         claudeApiUrl,
                         Map.of(
@@ -221,7 +237,7 @@ public class AiChatService {
         }
         throw new AiServiceException(
                 AiServiceException.Reason.INVALID_RESPONSE,
-                "Opus 4.8 返回内容为空或格式异常"
+                "Claude 返回内容为空或格式异常"
         );
     }
 
@@ -236,14 +252,73 @@ public class AiChatService {
                 .POST(HttpRequest.BodyPublishers.ofString(payload))
                 .timeout(Duration.ofSeconds(timeoutSecondsValue == null ? 90 : timeoutSecondsValue));
         headers.forEach(builder::header);
-        HttpResponse<String> response = javaHttpClient.send(builder.build(), HttpResponse.BodyHandlers.ofString());
+
+        Exception proxiedError = null;
+        if (hasProxyConfig()) {
+            try {
+                return sendWithClient(proxiedHttpClient, builder.build(), provider, true);
+            } catch (Exception error) {
+                proxiedError = error;
+                log.warn("{} request via proxy failed, retrying direct connection: {}", provider, error.getMessage());
+            }
+        }
+
+        try {
+            return sendWithClient(directHttpClient, builder.build(), provider, false);
+        } catch (Exception directError) {
+            if (proxiedError != null) {
+                directError.addSuppressed(proxiedError);
+            }
+            throw directError;
+        }
+    }
+
+    private String sendWithClient(HttpClient client,
+                                  HttpRequest request,
+                                  String provider,
+                                  boolean viaProxy) throws Exception {
+        HttpResponse<String> response = client.send(request, HttpResponse.BodyHandlers.ofString());
         if (response.statusCode() >= 400) {
-            throw new AiServiceException(
-                    AiServiceException.Reason.UPSTREAM_ERROR,
-                    provider + " HTTP " + response.statusCode() + ": " + response.body()
-            );
+            throw buildUpstreamException(provider, viaProxy, response.statusCode(), response.body());
         }
         return response.body();
+    }
+
+    private AiServiceException buildUpstreamException(String provider,
+                                                      boolean viaProxy,
+                                                      int statusCode,
+                                                      String responseBody) {
+        String route = viaProxy ? "（经代理）" : "";
+        String normalizedProvider = provider == null ? "AI 服务" : provider;
+        String message;
+
+        if ("DeepSeek".equalsIgnoreCase(normalizedProvider) && statusCode == 401) {
+            message = "DeepSeek" + route + " 鉴权失败：AI_API_KEY / DEEPSEEK_API_KEY 无效。";
+        } else if ("Claude".equalsIgnoreCase(normalizedProvider) && statusCode == 401) {
+            message = "Claude" + route + " 鉴权失败：CLAUDE_API_KEY 无效。";
+        } else if ("Claude".equalsIgnoreCase(normalizedProvider) && statusCode == 403) {
+            message = "Claude" + route + " 当前账号无权访问该接口或模型。";
+        } else if (statusCode == 429) {
+            message = normalizedProvider + route + " 触发上游限流，请稍后重试。";
+        } else if (statusCode >= 500) {
+            message = normalizedProvider + route + " 上游服务异常，请稍后重试。";
+        } else {
+            message = normalizedProvider + route + " HTTP " + statusCode + "："
+                    + abbreviateBody(responseBody);
+        }
+
+        return new AiServiceException(
+                AiServiceException.Reason.UPSTREAM_ERROR,
+                message
+        );
+    }
+
+    private String abbreviateBody(String responseBody) {
+        if (responseBody == null || responseBody.isBlank()) {
+            return "空响应";
+        }
+        String compact = responseBody.replaceAll("\\s+", " ").trim();
+        return compact.length() > 180 ? compact.substring(0, 180) + "..." : compact;
     }
 
     private String executeWithRetry(String provider, ThrowingSupplier rawSupplier, ThrowingParser parser) {
@@ -268,9 +343,9 @@ public class AiChatService {
         throw lastError != null
                 ? lastError
                 : new AiServiceException(
-                        AiServiceException.Reason.UPSTREAM_ERROR,
-                        provider + " 服务暂时不可用，请稍后再试。"
-                );
+                AiServiceException.Reason.UPSTREAM_ERROR,
+                provider + " 服务暂时不可用，请稍后再试。"
+        );
     }
 
     private AiServiceException mapAiException(String provider, Exception error) {
@@ -302,9 +377,6 @@ public class AiChatService {
         if (error == null) {
             return false;
         }
-        // Premium requests should stay usable whenever Claude is unavailable.
-        // If Claude fails for quota, timeout, bad upstream response, or missing config,
-        // we degrade to DeepSeek while keeping the premium prompt chain.
         return switch (error.getReason()) {
             case MISCONFIGURED, TIMEOUT, INVALID_RESPONSE, UPSTREAM_ERROR -> true;
         };

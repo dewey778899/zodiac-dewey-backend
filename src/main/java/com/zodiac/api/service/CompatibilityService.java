@@ -84,6 +84,7 @@ public class CompatibilityService {
 
         String selectedModel = normalizeModelCode(request.getModel());
         boolean isPremium = CLAUDE_MODEL.equals(selectedModel);
+        String executionModel = isPremium ? DEEPSEEK_MODEL : selectedModel;
         int score = singleReport
                 ? scoringService.calculatePersonalScore(request, triA, reportType)
                 : scoringService.calculateScore(request, triA, triB);
@@ -91,12 +92,10 @@ public class CompatibilityService {
                 ? scoringService.inferPersonalType(score, triA.sun(), reportType)
                 : scoringService.inferRelationshipType(score, triA.sun(), triB.sun());
 
-        String systemPrompt = buildSystemPrompt(reportType, isPremium, selectedModel);
-        String deepSeekFallbackSystemPrompt = CLAUDE_MODEL.equals(selectedModel)
-                ? buildSystemPrompt(reportType, isPremium, DEEPSEEK_MODEL)
-                : systemPrompt;
+        String systemPrompt = buildSystemPrompt(reportType, isPremium, executionModel);
+        String deepSeekFallbackSystemPrompt = buildSystemPrompt(reportType, isPremium, DEEPSEEK_MODEL);
         String userPrompt = buildUserPrompt(request, triA, triB, isPremium, score, relType, reportType);
-        String raw = aiChatService.generate(systemPrompt, userPrompt, selectedModel, deepSeekFallbackSystemPrompt);
+        String raw = aiChatService.generate(systemPrompt, userPrompt, executionModel, deepSeekFallbackSystemPrompt);
         CompatibilityResponse response;
         try {
             response = buildResponseWithScore(raw, request, triA, triB, score, relType, reportType);

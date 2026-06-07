@@ -83,29 +83,15 @@ public class CompatibilityController {
         } catch (AiServiceException e) {
             log.error("AI generation failed: reason={}, message={}", e.getReason(), e.getMessage(), e);
             rateLimitService.rollback(ip, request.getModel());
-            if (premium) {
-                return ResponseEntity.status(503).body(Map.of(
-                        "error", "ai_service_failed",
-                        "message", "深度解析服务暂时不可用，请稍后重试。如已支付，请联系人工处理。",
-                        "reason", e.getReason().name(),
-                        "refundHint", "请联系客服处理支付后的异常订单"
-                ));
-            }
             return ResponseEntity.status(503).body(Map.of(
                     "error", "ai_service_failed",
                     "message", e.getMessage() != null ? e.getMessage() : "AI 生成失败，请稍后重试",
-                    "reason", e.getReason().name()
+                    "reason", e.getReason().name(),
+                    "refundHint", premium ? "当前是付费深度解析，如已支付请联系人工处理异常订单" : ""
             ));
         } catch (Exception e) {
             log.error("Report generation failed, rolling back rate-limit counter", e);
             rateLimitService.rollback(ip, request.getModel());
-            if (premium) {
-                return ResponseEntity.status(503).body(Map.of(
-                        "error", "generation_failed",
-                        "message", "深度解析服务暂时不可用，请稍后重试。如已支付，请联系客服处理。",
-                        "refundHint", "请联系客服处理支付后的异常订单"
-                ));
-            }
             return ResponseEntity.status(500).body(Map.of(
                     "error", "generation_failed",
                     "message", e.getMessage() != null ? e.getMessage() : "生成失败"
@@ -171,7 +157,7 @@ public class CompatibilityController {
                 && request.getPersonA().getGender() != null
                 && request.getPersonB().getGender() != null
                 && request.getPersonA().getGender().equalsIgnoreCase(request.getPersonB().getGender())) {
-            return "爱情合盘暂不支持同性别组合，请选择一男一女";
+            return "爱情合盘暂不支持同一性别组合，请选择一男一女";
         }
         if (!isLove
                 && !CompatibilityRequest.REPORT_TYPE_CAREER.equalsIgnoreCase(reportType)
