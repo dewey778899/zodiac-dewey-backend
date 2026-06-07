@@ -11,6 +11,7 @@
 # 后续 GitHub Actions 会自动部署, 无需手动操作
 # ==========================================
 
+# Deploy trigger: 2026-06-07T20:43:05+08:00
 services:
   frontend:
     image: registry.cn-shanghai.aliyuncs.com/dewey_zodiac/zodiac-dewey-frontend:latest
