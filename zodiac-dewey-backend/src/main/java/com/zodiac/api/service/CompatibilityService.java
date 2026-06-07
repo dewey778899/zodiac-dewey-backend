@@ -2,6 +2,11 @@ package com.zodiac.api.service;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import net.sourceforge.pinyin4j.PinyinHelper;
+import net.sourceforge.pinyin4j.format.HanyuPinyinCaseType;
+import net.sourceforge.pinyin4j.format.HanyuPinyinOutputFormat;
+import net.sourceforge.pinyin4j.format.HanyuPinyinToneType;
+import net.sourceforge.pinyin4j.format.exception.BadHanyuPinyinOutputFormatCombination;
 import com.zodiac.api.dto.CompatibilityRequest;
 import com.zodiac.api.dto.CompatibilityResponse;
 import com.zodiac.api.entity.SoulmateReport;
@@ -10,16 +15,20 @@ import com.zodiac.api.util.SwissEphemerisCalculator;
 import com.zodiac.api.util.ZodiacCalculator;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.core.io.ClassPathResource;
 import org.springframework.stereotype.Service;
+import org.springframework.util.StreamUtils;
 
+import java.io.IOException;
+import java.nio.charset.StandardCharsets;
 import java.security.SecureRandom;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Optional;
-import java.util.UUID;
 import java.util.regex.Pattern;
 
 @Slf4j
@@ -32,18 +41,26 @@ public class CompatibilityService {
     private final ZodiacScoringService scoringService;
     private final ObjectMapper objectMapper;
     private final SwissEphemerisCalculator swissEphemerisCalculator;
-    private final SecureRandom rng = new SecureRandom();
-
-    private static final String CHARS = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
     private static final int MIN_CHAPTERS = 6;
     private static final int MIN_ESSENCE = 6;
     private static final int PREMIUM_MIN_CHAPTERS = 8;
     private static final int PREMIUM_MIN_ESSENCE = 8;
     private static final Pattern KEYWORD_COMMA_FIX =
             Pattern.compile("(?<=[\\}\"\\]0-9])\\s*\\n\\s*\"(?=[A-Za-z\\u4e00-\\u9fa5_]+\"\\s*:)");
+    private static final Pattern ARRAY_OBJECT_BOUNDARY_FIX =
+            Pattern.compile("}\\s*\\n\\s*\"(?=[A-Za-z\\u4e00-\\u9fa5_]+\"\\s*:)");
+    private static final Pattern MISSING_ARRAY_COMMA_FIX =
+            Pattern.compile("}\\s*\\n\\s*\\{");
     private static final Pattern PROMPT_INJECTION_CLEAN =
             Pattern.compile("[\\x00-\\x08\\x0B\\x0C\\x0E-\\x1F]");
     private static final String DEFAULT_MODEL = "deepseek";
+    private static final String PROMPT_BASE_PATH = "prompts/";
+    private static final String DEEPSEEK_MODEL = "deepseek";
+    private static final String CLAUDE_MODEL = "claude";
+    private static final String DEEPSEEK_ADDON = "model-deepseek-addon.txt";
+    private static final DateTimeFormatter REPORT_UID_TIMESTAMP = DateTimeFormatter.ofPattern("yyyyMMddHHmmss");
+    private static final String CLAUDE_ADDON = "model-claude-addon.txt";
+    private static final HanyuPinyinOutputFormat PINYIN_FORMAT = buildPinyinFormat();
 
 
     public CompatibilityResponse generateReport(CompatibilityRequest request, String ip, String userAgent) {
@@ -65,7 +82,9 @@ public class CompatibilityService {
                     request.getPersonB().getName(), triB.sun(), triB.moon(), triB.rising());
         }
 
-        boolean isPremium = "claude".equalsIgnoreCase(request.getModel());
+        String selectedModel = normalizeModelCode(request.getModel());
+        boolean isPremium = CLAUDE_MODEL.equals(selectedModel);
+        String executionModel = isPremium ? DEEPSEEK_MODEL : selectedModel;
         int score = singleReport
                 ? scoringService.calculatePersonalScore(request, triA, reportType)
                 : scoringService.calculateScore(request, triA, triB);
@@ -73,17 +92,18 @@ public class CompatibilityService {
                 ? scoringService.inferPersonalType(score, triA.sun(), reportType)
                 : scoringService.inferRelationshipType(score, triA.sun(), triB.sun());
 
-        String systemPrompt = buildSystemPrompt(isPremium, reportType);
+        String systemPrompt = buildSystemPrompt(reportType, isPremium, executionModel);
+        String deepSeekFallbackSystemPrompt = buildSystemPrompt(reportType, isPremium, DEEPSEEK_MODEL);
         String userPrompt = buildUserPrompt(request, triA, triB, isPremium, score, relType, reportType);
-        String selectedModel = request.getModel() != null ? request.getModel() : DEFAULT_MODEL;
-        String raw = null;
+        String raw = aiChatService.generate(systemPrompt, userPrompt, executionModel, deepSeekFallbackSystemPrompt);
         CompatibilityResponse response;
         try {
-            raw = aiChatService.generate(systemPrompt, userPrompt, selectedModel);
             response = buildResponseWithScore(raw, request, triA, triB, score, relType, reportType);
-        } catch (AiServiceException e) {
-            log.error("AI generation failed, falling back to deterministic report: {}", e.getMessage(), e);
-            raw = "{\"fallback\":true,\"reason\":\"" + e.getReason() + "\"}";
+        } catch (AiServiceException error) {
+            if (error.getReason() != AiServiceException.Reason.INVALID_RESPONSE) {
+                throw error;
+            }
+            log.warn("AI payload invalid after recovery, returning fallback report instead. raw preview: {}", preview(raw), error);
             response = buildFallbackResponse(request, triA, triB, raw, score, relType, reportType);
         }
 
@@ -179,14 +199,40 @@ public class CompatibilityService {
                 .build();
     }
 
-    private String buildSystemPrompt(boolean isPremium, String reportType) {
-        if (isSingleReport(reportType)) {
-            return buildSingleSystemPrompt(isPremium, reportType);
+    private String buildSystemPrompt(String reportType, boolean isPremium, String modelCode) {
+        String themePrompt = loadPrompt(resolveSystemPromptKey(reportType, isPremium));
+        String modelAddon = loadPrompt(resolveModelAddonKey(modelCode));
+        return themePrompt + System.lineSeparator() + System.lineSeparator() + modelAddon;
+    }
+
+    private String resolveSystemPromptKey(String reportType, boolean isPremium) {
+        String normalizedReportType = normalizeReportType(reportType);
+        String tier = isPremium ? "premium" : "free";
+        return normalizedReportType + "-" + tier + "-system.txt";
+    }
+
+    private String resolveModelAddonKey(String modelCode) {
+        return CLAUDE_MODEL.equalsIgnoreCase(modelCode) ? CLAUDE_ADDON : DEEPSEEK_ADDON;
+    }
+
+    private String loadPrompt(String promptKey) {
+        String resourcePath = PROMPT_BASE_PATH + promptKey;
+        ClassPathResource resource = new ClassPathResource(resourcePath);
+        if (!resource.exists()) {
+            log.error("System prompt file not found: {}", resourcePath);
+            throw new IllegalStateException("Missing system prompt file: " + resourcePath);
         }
-        if (isPremium) {
-            return buildPremiumSystemPrompt();
+        try {
+            String prompt = StreamUtils.copyToString(resource.getInputStream(), StandardCharsets.UTF_8).trim();
+            if (prompt.isBlank()) {
+                log.error("System prompt file is blank: {}", resourcePath);
+                throw new IllegalStateException("Blank system prompt file: " + resourcePath);
+            }
+            return prompt;
+        } catch (IOException e) {
+            log.error("Failed to load system prompt file: {}", resourcePath, e);
+            throw new IllegalStateException("Failed to load system prompt file: " + resourcePath, e);
         }
-        return buildFreeSystemPrompt();
     }
 
     private String buildFreeSystemPrompt() {
@@ -503,9 +549,12 @@ public class CompatibilityService {
                 JsonNode recovered = tryParseJson(repairCommonJsonIssues(normalized));
                 return buildResponseFromJson(recovered, request, triA, triB, score, relType, reportType);
             } catch (Exception recoveryError) {
-                log.error("AI response recovery failed, falling back to deterministic report. raw preview: {}",
+                log.error("AI response recovery failed, switching to fallback report. raw preview: {}",
                         preview(raw), recoveryError);
-                return buildFallbackResponse(request, triA, triB, raw, score, relType, reportType);
+                throw new AiServiceException(
+                        AiServiceException.Reason.INVALID_RESPONSE,
+                        "大模型返回内容格式异常，无法生成报告。请稍后重试。"
+                );
             }
         }
     }
@@ -538,7 +587,7 @@ public class CompatibilityService {
                 .reportType(reportType)
                 .chapters(chapters)
                 .essence(essence)
-                .reportUid(generateReportUid(triA.sun(), triB.sun()))
+                .reportUid(generateReportUid(request.getPersonA().getName()))
                 .zodiacA(toZodiacInfo(triA))
                 .zodiacB(isSingleReport(reportType) ? null : toZodiacInfo(triB))
                 .build();
@@ -574,10 +623,17 @@ public class CompatibilityService {
 
     private String repairCommonJsonIssues(String content) {
         String fixed = KEYWORD_COMMA_FIX.matcher(content).replaceAll(",\n\"");
+        fixed = ARRAY_OBJECT_BOUNDARY_FIX.matcher(fixed).replaceAll("},\n\"");
+        fixed = MISSING_ARRAY_COMMA_FIX.matcher(fixed).replaceAll("},\n{");
         if (fixed.length() > content.length() * 2) {
             fixed = content;
         }
-        fixed = fixed.replace("“", "\\\"").replace("”", "\\\"");
+        fixed = fixed
+                .replace("“", "\"")
+                .replace("”", "\"")
+                .replace("‘", "'")
+                .replace("’", "'")
+                .replace("：", ":");
         return fixed;
     }
 
@@ -675,7 +731,7 @@ public class CompatibilityService {
                 .reportType(reportType)
                 .chapters(fallbackChapters(request, triA, triB, isPremium, reportType))
                 .essence(fallbackEssence(request, triA, triB, isPremium, reportType))
-                .reportUid(generateReportUid(triA.sun(), triB.sun()))
+                .reportUid(generateReportUid(request.getPersonA().getName()))
                 .zodiacA(toZodiacInfo(triA))
                 .zodiacB(isSingleReport(reportType) ? null : toZodiacInfo(triB))
                 .build();
@@ -871,47 +927,112 @@ public class CompatibilityService {
                 .build();
     }
 
-    private String generateReportUid(String sunA, String sunB) {
-        String codeA = zodiacToCode(sunA);
-        String codeB = zodiacToCode(sunB);
-        LocalDate d = LocalDate.now();
-        String date = String.format("%02d%02d%02d",
-                d.getYear() % 100, d.getMonthValue(), d.getDayOfMonth());
-        String uid;
+    private String generateReportUid(String userName) {
+        String initial = extractReportInitial(userName);
+        LocalDateTime now = LocalDateTime.now();
+        String timestamp = now.format(REPORT_UID_TIMESTAMP);
+        String prefix = initial + timestamp;
+        long existingCount = repository.countByReportUidStartingWith(initial + now.toLocalDate().format(DateTimeFormatter.BASIC_ISO_DATE));
+        int sequence = (int) existingCount + 1;
         int attempts = 0;
+        String uid;
         do {
-            StringBuilder rand = new StringBuilder();
-            for (int i = 0; i < 4; i++) {
-                rand.append(CHARS.charAt(rng.nextInt(CHARS.length())));
-            }
-            uid = String.format("N° %s%s-%s-%s", codeA, codeB, date, rand);
+            uid = prefix + padSequence(sequence + attempts);
             attempts++;
-            if (attempts > 10) {
-                String uuid = UUID.randomUUID().toString().substring(0, 8).toUpperCase();
-                uid = String.format("N° %s-%s-%s", uuid, date, rand);
-                break;
-            }
-        } while (repository.findByReportUid(uid).isPresent());
+        } while (repository.findByReportUid(uid).isPresent() && attempts < 1000);
         return uid;
     }
 
-    private String zodiacToCode(String zodiac) {
-        return switch (zodiac) {
-            case "白羊座" -> "AR";
-            case "金牛座" -> "TA";
-            case "双子座" -> "GE";
-            case "巨蟹座" -> "CA";
-            case "狮子座" -> "LE";
-            case "处女座" -> "VI";
-            case "天秤座" -> "LI";
-            case "天蝎座" -> "SC";
-            case "射手座" -> "SA";
-            case "摩羯座" -> "CP";
-            case "水瓶座" -> "AQ";
-            case "双鱼座" -> "PI";
-            default -> "XX";
-        };
+    private String extractReportInitial(String userName) {
+        String normalized = buildReportNamePinyin(userName);
+        if (normalized.isBlank() || "Report".equals(normalized)) {
+            return "X";
+        }
+        char first = normalized.charAt(0);
+        if (first >= 'a' && first <= 'z') {
+            return String.valueOf(Character.toUpperCase(first));
+        }
+        if ((first >= 'A' && first <= 'Z') || (first >= '0' && first <= '9')) {
+            return String.valueOf(first);
+        }
+        return "X";
     }
+
+    private String padSequence(int sequence) {
+        int normalized = Math.max(sequence, 1);
+        return String.format("%03d", normalized);
+    }
+
+    private String buildReportNamePinyin(String userName) {
+        String normalized = userName == null ? "" : userName.trim();
+        if (normalized.isBlank()) {
+            return "Report";
+        }
+        StringBuilder builder = new StringBuilder();
+        for (char ch : normalized.toCharArray()) {
+            if (Character.isWhitespace(ch) || ch == '-' || ch == '_') {
+                continue;
+            }
+            if (isAsciiAlphaNumeric(ch)) {
+                builder.append(normalizeAsciiChar(ch));
+                continue;
+            }
+            if (isChineseCharacter(ch)) {
+                builder.append(toCapitalizedPinyin(ch));
+            }
+        }
+        String value = builder.toString().replaceAll("[^A-Za-z0-9]", "");
+        if (value.isBlank()) {
+            return "Report";
+        }
+        return value.length() > 32 ? value.substring(0, 32) : value;
+    }
+
+    private static HanyuPinyinOutputFormat buildPinyinFormat() {
+        HanyuPinyinOutputFormat format = new HanyuPinyinOutputFormat();
+        format.setCaseType(HanyuPinyinCaseType.LOWERCASE);
+        format.setToneType(HanyuPinyinToneType.WITHOUT_TONE);
+        return format;
+    }
+
+    private boolean isAsciiAlphaNumeric(char ch) {
+        return (ch >= '0' && ch <= '9')
+                || (ch >= 'A' && ch <= 'Z')
+                || (ch >= 'a' && ch <= 'z');
+    }
+
+    private String normalizeAsciiChar(char ch) {
+        if (ch >= 'A' && ch <= 'Z') {
+            return String.valueOf(ch);
+        }
+        if (ch >= 'a' && ch <= 'z') {
+            return String.valueOf(Character.toUpperCase(ch));
+        }
+        return String.valueOf(ch);
+    }
+
+    private boolean isChineseCharacter(char ch) {
+        Character.UnicodeBlock block = Character.UnicodeBlock.of(ch);
+        return block == Character.UnicodeBlock.CJK_UNIFIED_IDEOGRAPHS
+                || block == Character.UnicodeBlock.CJK_UNIFIED_IDEOGRAPHS_EXTENSION_A
+                || block == Character.UnicodeBlock.CJK_UNIFIED_IDEOGRAPHS_EXTENSION_B
+                || block == Character.UnicodeBlock.CJK_COMPATIBILITY_IDEOGRAPHS;
+    }
+
+    private String toCapitalizedPinyin(char ch) {
+        try {
+            String[] pinyinArray = PinyinHelper.toHanyuPinyinStringArray(ch, PINYIN_FORMAT);
+            if (pinyinArray == null || pinyinArray.length == 0 || pinyinArray[0].isBlank()) {
+                return "";
+            }
+            String pinyin = pinyinArray[0];
+            return Character.toUpperCase(pinyin.charAt(0)) + pinyin.substring(1);
+        } catch (BadHanyuPinyinOutputFormatCombination e) {
+            log.warn("Failed to convert user name char to pinyin: {}", ch, e);
+            return "";
+        }
+    }
+
 
     private SoulmateReport toEntity(CompatibilityRequest req, CompatibilityResponse resp,
                                     ZodiacCalculator.ZodiacTriplet triA,
@@ -1050,7 +1171,7 @@ public class CompatibilityService {
     }
 
     private String normalizeModelCode(String modelCode) {
-        return "claude".equalsIgnoreCase(modelCode) ? "claude" : DEFAULT_MODEL;
+        return CLAUDE_MODEL.equalsIgnoreCase(modelCode) ? CLAUDE_MODEL : DEFAULT_MODEL;
     }
 
     private String sanitizeForPrompt(String input) {
