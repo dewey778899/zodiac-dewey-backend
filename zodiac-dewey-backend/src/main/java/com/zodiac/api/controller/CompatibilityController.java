@@ -2,11 +2,14 @@ package com.zodiac.api.controller;
 
 import com.zodiac.api.dto.CompatibilityRequest;
 import com.zodiac.api.dto.CompatibilityResponse;
+import com.zodiac.api.dto.PremiumUnlockRequestDto;
 import com.zodiac.api.dto.WechatUpdateRequest;
 import com.zodiac.api.repository.SoulmateReportRepository;
-import com.zodiac.api.service.AnalyticsService;
 import com.zodiac.api.service.AiServiceException;
+import com.zodiac.api.service.AnalyticsService;
 import com.zodiac.api.service.CompatibilityService;
+import com.zodiac.api.service.PaymentEntitlementService;
+import com.zodiac.api.service.PremiumUnlockService;
 import com.zodiac.api.service.RateLimitService;
 import com.zodiac.api.util.IpUtil;
 import jakarta.servlet.http.HttpServletRequest;
@@ -29,6 +32,8 @@ public class CompatibilityController {
     private final RateLimitService rateLimitService;
     private final SoulmateReportRepository repository;
     private final AnalyticsService analyticsService;
+    private final PaymentEntitlementService paymentEntitlementService;
+    private final PremiumUnlockService premiumUnlockService;
 
     @GetMapping("/health")
     public Map<String, Object> health() {
@@ -42,7 +47,7 @@ public class CompatibilityController {
 
     @PostMapping("/compatibility")
     public ResponseEntity<?> generate(@Valid @RequestBody CompatibilityRequest request,
-                                       HttpServletRequest httpReq) {
+                                      HttpServletRequest httpReq) {
         String ip = IpUtil.getClientIp(httpReq);
         String ua = httpReq.getHeader("User-Agent");
 
@@ -54,7 +59,6 @@ public class CompatibilityController {
             ));
         }
 
-        // 1. 限流检查（含 Claude 专属配额）
         String limitMsg = rateLimitService.tryAcquire(ip, request.getModel());
         if (limitMsg != null) {
             return ResponseEntity.status(429).body(Map.of(
@@ -63,38 +67,31 @@ public class CompatibilityController {
             ));
         }
 
-        // 2. 生成报告
+        boolean premium = "claude".equalsIgnoreCase(request.getModel());
+        if (premium && !paymentEntitlementService.consumeToken(request.getAccessToken())) {
+            rateLimitService.rollback(ip, request.getModel());
+            return ResponseEntity.status(403).body(Map.of(
+                    "error", "payment_required",
+                    "message", "深度解析需要有效且未使用的支付凭证"
+            ));
+        }
+
         try {
             CompatibilityResponse resp = compatibilityService.generateReport(request, ip, ua);
             analyticsService.recordGenerateSuccess(request.getModel(), resp.getReportUid(), ip, ua);
             return ResponseEntity.ok(resp);
         } catch (AiServiceException e) {
-            log.error("AI 生成失败: reason={}, msg={}", e.getReason(), e.getMessage(), e);
+            log.error("AI generation failed: reason={}, message={}", e.getReason(), e.getMessage(), e);
             rateLimitService.rollback(ip, request.getModel());
-            boolean isPremium = "claude".equalsIgnoreCase(request.getModel());
-            if (isPremium) {
-                return ResponseEntity.status(503).body(Map.of(
-                        "error", "ai_service_failed",
-                        "message", "深度解析服务暂时不可用，请稍后重试。如已付费，可添加微信 hellodewey 联系退费。",
-                        "reason", e.getReason().name(),
-                        "refundHint", "添加微信 hellodewey 可申请退费"
-                ));
-            }
-            return ResponseEntity.status(500).body(Map.of(
-                    "error", "generation_failed",
-                    "message", e.getMessage() != null ? e.getMessage() : "生成失败，请稍后重试"
+            return ResponseEntity.status(503).body(Map.of(
+                    "error", "ai_service_failed",
+                    "message", e.getMessage() != null ? e.getMessage() : "AI 生成失败，请稍后重试",
+                    "reason", e.getReason().name(),
+                    "refundHint", premium ? "当前是付费深度解析，如已支付请联系人工处理异常订单" : ""
             ));
         } catch (Exception e) {
-            log.error("生成报告失败,回滚限流计数", e);
+            log.error("Report generation failed, rolling back rate-limit counter", e);
             rateLimitService.rollback(ip, request.getModel());
-            boolean isPremium = "claude".equalsIgnoreCase(request.getModel());
-            if (isPremium) {
-                return ResponseEntity.status(503).body(Map.of(
-                        "error", "generation_failed",
-                        "message", "深度解析服务暂时不可用，请稍后重试。如已付费，可添加微信 hellodewey 联系退费。",
-                        "refundHint", "添加微信 hellodewey 可申请退费"
-                ));
-            }
             return ResponseEntity.status(500).body(Map.of(
                     "error", "generation_failed",
                     "message", e.getMessage() != null ? e.getMessage() : "生成失败"
@@ -102,9 +99,15 @@ public class CompatibilityController {
         }
     }
 
+    @PostMapping("/premium/douyin-unlock")
+    public ResponseEntity<?> createPremiumUnlock(@Valid @RequestBody PremiumUnlockRequestDto request,
+                                                 HttpServletRequest httpReq) {
+        return ResponseEntity.ok(premiumUnlockService.createDouyinUnlock(request, httpReq));
+    }
+
     @PostMapping("/wechat")
     public ResponseEntity<?> updateWechat(@Valid @RequestBody WechatUpdateRequest req,
-                                           HttpServletRequest httpReq) {
+                                          HttpServletRequest httpReq) {
         String ip = IpUtil.getClientIp(httpReq);
         if (!rateLimitService.tryAcquireWechat(ip)) {
             return ResponseEntity.status(429).body(Map.of(
@@ -114,7 +117,7 @@ public class CompatibilityController {
         }
         int updated = repository.updateWechatId(req.getReportUid(), req.getWechatId());
         if (updated > 0) {
-            return ResponseEntity.ok(Map.of("status", "ok", "message", "提交成功,小登哥会看到你的消息 💕"));
+            return ResponseEntity.ok(Map.of("status", "ok", "message", "提交成功，我们会尽快查看"));
         }
         return ResponseEntity.status(404).body(Map.of(
                 "error", "not_found",
@@ -133,12 +136,11 @@ public class CompatibilityController {
         Optional<CompatibilityResponse> report = compatibilityService.getReportByUid(uid);
         if (report.isPresent()) {
             return ResponseEntity.ok(report.get());
-        } else {
-            return ResponseEntity.status(404).body(Map.of(
-                    "error", "not_found",
-                    "message", "该报告不存在或已过期"
-            ));
         }
+        return ResponseEntity.status(404).body(Map.of(
+                "error", "not_found",
+                "message", "该报告不存在或已过期"
+        ));
     }
 
     private String validateBusinessRequest(CompatibilityRequest request) {
@@ -149,7 +151,16 @@ public class CompatibilityController {
         if (isLove && request.getPersonB() == null) {
             return "爱情合盘需要提供 TA 的信息";
         }
-        if (!isLove && !CompatibilityRequest.REPORT_TYPE_CAREER.equalsIgnoreCase(reportType)
+        if (isLove
+                && request.getPersonA() != null
+                && request.getPersonB() != null
+                && request.getPersonA().getGender() != null
+                && request.getPersonB().getGender() != null
+                && request.getPersonA().getGender().equalsIgnoreCase(request.getPersonB().getGender())) {
+            return "爱情合盘暂不支持同一性别组合，请选择一男一女";
+        }
+        if (!isLove
+                && !CompatibilityRequest.REPORT_TYPE_CAREER.equalsIgnoreCase(reportType)
                 && !CompatibilityRequest.REPORT_TYPE_WEALTH.equalsIgnoreCase(reportType)) {
             return "不支持的报告类型";
         }
