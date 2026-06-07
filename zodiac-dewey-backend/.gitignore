@@ -5,9 +5,13 @@ target/
 
 # Logs
 *.log
+logs/
 
 # Database files
 data/
+*.db
+*.sqlite
+*.sqlite3
 
 # IDE
 .idea/
@@ -24,3 +28,4 @@ Thumbs.db
 
 # Misc
 .workbuddy/
+*.pid

@@ -1,23 +1,57 @@
 # 小登哥灵魂合盘 - 后端 API
 
-Spring Boot + Java 17 后端服务，提供 AI 星座合盘 API。
+这是一个基于 `Spring Boot 3` 和 `Java 17` 的后端服务，负责：
 
-## Docker 镜像
+- 合盘 / 事业 / 财运报告接口
+- AI 模型调用与降级
+- 支付、埋点、后台管理接口
+- SQLite 本地数据存储
 
-- **ACR**: `registry.cn-shanghai.aliyuncs.com/dewey_zodiac/zodiac-dewey-backend:latest`
+## 目录结构
 
-## 配置
+```text
+zodiac-dewey-backend/
+|-- src/main/java              后端源码
+|-- src/main/resources         配置与静态资源
+|-- src/test/java              测试代码
+|-- data/                      本地数据库目录
+|-- logs/                      本地运行日志目录
+|-- docs/                      接口与部署文档
+|-- Dockerfile
+|-- docker-compose.yml
+`-- pom.xml
+```
 
-复制 `.env.example` 为 `.env` 并填写配置：
+## 本地运行
+
+先复制环境变量模板：
 
 ```bash
 cp .env.example .env
 ```
 
-## 部署
+然后启动：
 
 ```bash
-docker pull registry.cn-shanghai.aliyuncs.com/dewey_zodiac/zodiac-dewey-backend:latest
+mvn spring-boot:run
 ```
 
-配合 `docker-compose.yml` 和前端服务一起使用。
+默认端口：
+
+- 应用端口：`8080`
+- 管理端口：`59999`
+
+默认路径：
+
+- 日志：`./logs/backend.log`
+- 数据库：`./data/zodiac_dewey.db`
+
+## Docker 镜像
+
+- `registry.cn-shanghai.aliyuncs.com/dewey_zodiac/zodiac-dewey-backend:latest`
+
+## 相关文档
+
+- [API.md](./docs/API.md)
+- [DEPLOY.md](./docs/DEPLOY.md)
+- [NGINX.md](./docs/NGINX.md)

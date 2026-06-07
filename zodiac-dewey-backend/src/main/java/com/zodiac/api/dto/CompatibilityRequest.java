@@ -20,12 +20,15 @@ public class CompatibilityRequest {
     @Valid
     private Person personB;
 
-    /** 选择的模型: "deepseek" 或 "claude"(深度解析 / Opus 4.7), 默认 "deepseek" */
     @Pattern(regexp = "^(deepseek|claude)$", message = "不支持的模型类型")
     private String model;
 
-    /** 报告主题: love / career / wealth, 默认 love */
     private String reportType;
+
+    /**
+     * 仅深度解析需要，一次性支付凭证。
+     */
+    private String accessToken;
 
     @Data
     public static class Person {
@@ -41,14 +44,8 @@ public class CompatibilityRequest {
 
         private String birthTime;
         private String birthPlace;
-        
-        /** 出生地纬度（用于 Swiss Ephemeris 精确计算） */
         private Double birthLatitude;
-        
-        /** 出生地经度（用于 Swiss Ephemeris 精确计算） */
         private Double birthLongitude;
-        
-        /** 出生地时区（如 Asia/Shanghai） */
         private String birthTimezone;
     }
 }

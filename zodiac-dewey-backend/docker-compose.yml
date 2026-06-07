@@ -12,6 +12,15 @@
 # ==========================================
 
 services:
+  frontend:
+    image: registry.cn-shanghai.aliyuncs.com/dewey_zodiac/zodiac-dewey-frontend:latest
+    container_name: zodiac-frontend
+    ports:
+      - "80:80"
+    depends_on:
+      - backend
+    restart: unless-stopped
+
   backend:
     image: registry.cn-shanghai.aliyuncs.com/dewey_zodiac/zodiac-dewey-backend:latest
     container_name: zodiac-backend
@@ -23,5 +32,8 @@ services:
       - DEEPSEEK_API_KEY=${DEEPSEEK_API_KEY}
       - CLAUDE_API_KEY=${CLAUDE_API_KEY}
       - ADMIN_PASSWORD=${ADMIN_PASSWORD}
+      - DB_URL=jdbc:sqlite:/app/data/zodiac_dewey.db
+      - DB_DRIVER=org.sqlite.JDBC
+      - HIBERNATE_DIALECT=org.hibernate.community.dialect.SQLiteDialect
       - TZ=Asia/Shanghai
     restart: unless-stopped

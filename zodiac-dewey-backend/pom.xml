@@ -54,6 +54,11 @@
             <scope>runtime</scope>
         </dependency>
         <dependency>
+            <groupId>com.h2database</groupId>
+            <artifactId>h2</artifactId>
+            <scope>runtime</scope>
+        </dependency>
+        <dependency>
             <groupId>org.hibernate.orm</groupId>
             <artifactId>hibernate-community-dialects</artifactId>
         </dependency>
@@ -72,9 +77,13 @@
             <groupId>com.github.ben-manes.caffeine</groupId>
             <artifactId>caffeine</artifactId>
         </dependency>
+        <dependency>
+            <groupId>com.belerweb</groupId>
+            <artifactId>pinyin4j</artifactId>
+            <version>2.5.1</version>
+        </dependency>
 
-        <!-- Swiss Ephemeris - 精确天文计算 -->
-        <!-- 当前使用纯 Java 实现（基于 Meeus 天文算法），无需额外依赖 -->
+        <!-- Swiss Ephemeris: pure Java implementation based on Meeus algorithms -->
 
         <!-- Test -->
         <dependency>

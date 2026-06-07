@@ -1,0 +1,6 @@
+{
+  "dependencies": {
+    "district-data": "^0.0.17",
+    "sinomap": "^0.5.1"
+  }
+}
