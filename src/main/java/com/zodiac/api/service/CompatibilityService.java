@@ -24,6 +24,7 @@ import java.nio.charset.StandardCharsets;
 import java.security.SecureRandom;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.Iterator;
@@ -42,9 +43,9 @@ public class CompatibilityService {
     private final ObjectMapper objectMapper;
     private final SwissEphemerisCalculator swissEphemerisCalculator;
     private static final int MIN_CHAPTERS = 6;
-    private static final int MIN_ESSENCE = 6;
-    private static final int PREMIUM_MIN_CHAPTERS = 8;
-    private static final int PREMIUM_MIN_ESSENCE = 8;
+    private static final int MIN_ESSENCE = 4;
+    private static final int PREMIUM_MIN_CHAPTERS = 6;
+    private static final int PREMIUM_MIN_ESSENCE = 4;
     private static final Pattern KEYWORD_COMMA_FIX =
             Pattern.compile("(?<=[\\}\"\\]0-9])\\s*\\n\\s*\"(?=[A-Za-z\\u4e00-\\u9fa5_]+\"\\s*:)");
     private static final Pattern ARRAY_OBJECT_BOUNDARY_FIX =
@@ -57,6 +58,9 @@ public class CompatibilityService {
     private static final String PROMPT_BASE_PATH = "prompts/";
     private static final String DEEPSEEK_MODEL = "deepseek";
     private static final String CLAUDE_MODEL = "claude";
+    private static final ZoneId REPORT_TIME_ZONE = ZoneId.of("Asia/Shanghai");
+    private static final DateTimeFormatter PROMPT_DATE_FORMAT = DateTimeFormatter.ISO_LOCAL_DATE;
+    private static final DateTimeFormatter PROMPT_MONTH_FORMAT = DateTimeFormatter.ofPattern("yyyy-MM");
     private static final String DEEPSEEK_ADDON = "model-deepseek-addon.txt";
     private static final DateTimeFormatter REPORT_UID_TIMESTAMP = DateTimeFormatter.ofPattern("yyyyMMddHHmmss");
     private static final String CLAUDE_ADDON = "model-claude-addon.txt";
@@ -244,7 +248,7 @@ public class CompatibilityService {
                 2. JSON 必须合法，所有字符串必须正确转义，字段之间必须有英文逗号。
                 3. 所有 chapter.content 都必须是普通字符串，不要嵌套对象，不要列表标记。
                 4. 不要在 JSON 末尾补任何总结或署名说明，署名只允许出现在最后一章正文里。
-                5. 总字数控制在 1000-1600 字，直接、具体、不重复。
+                5. 总字数控制在 900-1400 字，直接、具体、不重复。
 
                 【分析框架 - 6章】
                 {
@@ -257,7 +261,7 @@ public class CompatibilityService {
                     {"title": "你们最容易出问题的地方", "emoji": "⚠️", "content": "分析3-4个具体矛盾场景。每个矛盾要有场景感，结合星座特质解释为什么会这样。不要只写成'你们容易冷战'这种笼统描述，要具体到'当TA的月亮XX遇到你的上升XX时...'。模式冲突（基本/固定/变动）也要纳入分析。" },
                     {"title": "相处指南", "emoji": "🧭", "content": "提供3-4条具体可操作的相处策略。每条建议要结合星座特质给出具体场景和话术示例，比如'当TA的XX星座特质让你感到被忽视时，你可以这样说：...'" },
                     {"title": "宫位与运势预演", "emoji": "🔮", "content": "①简要分析双方重要行星落入对方哪些关键宫位（7宫婚姻宫/5宫恋爱宫/8宫深度连接/4宫家庭宫）；②基于星座能量变化，预测未来三个月的关系走向。" },
-                    {"title": "综合评估与悄悄话", "emoji": "🌙", "content": "①五维度评分（情感/激情/沟通/承诺/成长），每个维度1-10分并附一句话解读；②列出3个关系优势和3个需要注意的挑战；③以知心朋友的口吻写一段温暖的结尾，署名：—— 小登哥 ✨" }
+                    {"title": "综合评估与悄悄话", "emoji": "🌙", "content": "①五维度评分（情感/激情/沟通/承诺/成长），每个维度1-10分并附一句话解读；②列出2个关系优势和2个需要注意的挑战；③以知心朋友的口吻写一段温暖的结尾，署名：—— 小登哥 ✨" }
                   ],
                   "essence": [
                     "4条可收藏的建议，每条15字以内，具体可操作"
@@ -287,24 +291,22 @@ public class CompatibilityService {
                 2. JSON 必须合法，所有字符串必须正确转义，字段之间必须有英文逗号。
                 3. 所有 chapter.content 都必须是普通字符串，不要嵌套对象，不要列表标记。
                 4. 不要在 JSON 末尾补任何总结或署名说明，署名只允许出现在最后一章正文里。
-                5. 总字数控制在 1800-2600 字，简洁但具体，避免重复。
+                5. 总字数控制在 1600-2200 字，简洁但具体，避免重复。
                 6. 全文必须使用第二人称"你"来叙述，营造一对一咨询的专属感。
                 7. 分析时必须先进行逻辑推演（在思考中完成），确保每个判断都有占星学依据。
 
-                【分析框架 - 8章】
+                【分析框架 - 6章】
                 {
                   "score": 60-95 的整数（由系统计算，不要自行编造）,
                   "relationshipType": "4到8个字的关系类型（使用系统给定的值）",
                   "tagline": "一句话总结，不超过30字",
                   "chapters": [
-                    {"title": "你们的星座基因", "emoji": "✨", "content": "深度分析两人的太阳/月亮/上升三要素核心特质。用第二人称'你'叙述，描述这些特质在亲密关系中的具体表现。要有画面感和具体场景，但避免重复铺陈。" },
-                    {"title": "元素模式与相位磁场", "emoji": "💞", "content": "三个维度分析：①四元素分布对比（火土风水）与模式对比（基本/固定/变动），给出契合度评分1-10并解读；②逐一分析关键相位：日月相位（情感基础）、金火相位（吸引力与性张力）、金木相位（价值观与快乐源泉）、月土相位（安全感与承诺）、日上升相位（自我认同与投射），每个相位说明类型、正面表现、潜在挑战、实用建议；③金星与火星的互动分析（爱情观与行动力的匹配度）。必须使用具体场景描写，制造'被看穿'的惊喜感。" },
-                    {"title": "矛盾的真相：你们最容易出问题的地方", "emoji": "⚠️", "content": "分析3-4个具体矛盾场景。每个矛盾按五段式写：①场景还原（具体时间地点事件）；②你的期待反应（你希望得到什么回应）；③TA的实际反应（TA实际做了什么）；④结果（关系受到的冲击）；⑤真相（从星座角度解读为什么会这样）。例如：'场景：你加班到很晚，希望TA来接你。你的期待：TA主动问'要不要我去接你'。TA的实际反应：TA说'那你打车回来吧，我先睡了'。结果：你觉得TA不在乎你。真相：TA的火星摩羯倾向于解决问题而非表达关心...'" },
-                    {"title": "深度相处指南", "emoji": "🧭", "content": "提供3-4条具体可操作的相处策略。每条建议必须包含：①适用场景（什么时候用）；②你可以这样说（给出 exact 话术示例，带引号）；③为什么有效（星座依据）。例如：'当TA冷战时，你可以这样说：'亲爱的，我现在需要你放下手机，抱我五分钟。'（然后亲TA一下）。为什么有效：TA的水瓶需要明确的指令而非暗示...'" },
-                    {"title": "宫位叠加与组合盘", "emoji": "🔮", "content": "①双方关键行星落入对方重要宫位的解读（重点分析7宫婚姻宫、5宫恋爱宫、8宫深度连接、4宫家庭宫）；②组合盘(Composite Chart)的关系太阳/月亮/上升解读，描述你们关系本身的核心主题与发展方向。" },
-                    {"title": "业力与演化视角", "emoji": "🌟", "content": "从演化占星学视角解读：①月交点轴线的合盘意义（南交点→前世未完成的课题，北交点→这一世需要共同成长的方向）；②凯龙星相位带来的疗愈主题；③土星合相/对分的业力承诺含义。用故事化的方式描述一种'似曾相识'的感觉，但不要写成具体的'前世你是谁、TA是谁'，而是聚焦于'你们相遇的深层意义'。" },
-                    {"title": "时间维度：当下与未来", "emoji": "📅", "content": "①当前流年(Transit)对合盘的影响分析；②未来12个月的关键星象节点（如金星逆行、水逆期、重要新月/满月），标注哪些时间窗口适合推进关系、哪些需要退一步观察；③给出基于这些时间节点的发展建议。" },
-                    {"title": "写给你的悄悄话", "emoji": "🌙", "content": "①五维度综合评分（情感/激情/沟通/承诺/成长），每个维度1-10分并附一句话解读；②2个关系优势与2个需要注意的挑战；③以知心朋友的口吻写一段短而走心的总结，点出你们关系的独特之处。自然引导：'这份报告可以转发给TA，或截图保存。如果想获取更详细的年度运势，可以关注小登哥的公众号。' 结尾署名：—— 小登哥 ✨" }
+                    {"title": "关系底色", "emoji": "✨", "content": "分析两人的太阳、月亮、上升与核心人格需求，点出三要素之间最关键的张力，并落到真实相处场景。" },
+                    {"title": "吸引力与张力", "emoji": "💞", "content": "重点分析太阳、月亮、金星、火星带来的吸引和拉扯，写清你们为什么会被彼此吸引，又最容易在哪些地方卡住。" },
+                    {"title": "情绪安全感与沟通", "emoji": "🗣️", "content": "把情绪刚需、回应方式、误解模式和和好路径合并写透，说明谁更需要回应、谁更容易克制，以及你们通常怎样越说越偏。" },
+                    {"title": "摩擦场景", "emoji": "⚠️", "content": "只保留2到3个最典型矛盾场景，每个按“场景→期待→实际反应→结果→真相”展开，直指核心，不贪多。" },
+                    {"title": "相处建议", "emoji": "🧭", "content": "给3条最值得立刻执行的建议，每条都包含适用场景、具体说法（带引号的话术）、为什么有效（星象依据）。" },
+                    {"title": "结论与未来阶段提醒", "emoji": "📅", "content": "总结2个关系优势、2个风险点，并只分析从今天起未来3个月内的阶段提醒，最后写一段短而走心的总结。" }
                   ],
                   "essence": [
                     "4条珍藏锦囊，每条15字以内，格式如：'当他专注其他事时，直接说'我需要你抱抱我''"
@@ -350,8 +352,8 @@ public class CompatibilityService {
                     {"title": "写给你的提醒", "emoji": "🌙", "content": "以一对一咨询口吻写一段务实又温柔的结语。"}
                   """;
         String premiumNote = isPremium
-                ? "5. 总字数控制在 1400-2200 字，简洁但具体，不要重复。\n6. 全文使用第二人称“你”，做成专业咨询感。"
-                : "5. 总字数控制在 900-1400 字，直接、清楚、不重复。";
+                ? "5. 总字数控制在 1400-2000 字，简洁但具体，不要重复。\n6. 全文使用第二人称“你”，做成专业咨询感。"
+                : "5. 总字数控制在 900-1300 字，直接、清楚、不重复。";
 
         return """
                 你是「小登哥」，一位拥有20年经验的专业占星师，擅长把占星学落成清晰、实用、有人味的个人分析。
@@ -419,6 +421,7 @@ public class CompatibilityService {
         sb.append("合盘分数: ").append(calculatedScore).append("分\n");
         sb.append("关系类型: ").append(relationshipType).append("\n");
         sb.append("请在报告中严格使用以上分数和关系类型，不要自行编造。\n\n");
+        appendCurrentTimeContext(sb, reportType, isPremium);
 
         appendPersonInfo(sb, "A", a.getName(), a.getGender(), a.getBirthDate(),
                 a.getBirthTime(), a.getBirthPlace(), triA, isPremium);
@@ -438,13 +441,12 @@ public class CompatibilityService {
         if (isPremium) {
             sb.append("【付费版特别要求 - 必须遵守】\n");
             sb.append("1. 全文必须使用第二人称'你'来叙述，营造一对一咨询的专属感\n");
-            sb.append("2. '矛盾的真相'章节：每个矛盾必须按'场景还原→你的期待→TA的实际反应→结果→真相'五段式写\n");
-            sb.append("3. '深度相处指南'章节：每条建议必须包含适用场景+你可以这样说（exact话术）+为什么有效（星座依据）\n");
-            sb.append("4. '元素模式与相位磁场'章节：必须逐一分析日月/金火/金木/月土/日上升五个关键相位\n");
-            sb.append("5. '业力与演化视角'章节：聚焦月交点/凯龙/土星的灵魂成长意义，不要写成具体的'前世身份'\n");
-            sb.append("6. '时间维度'章节：标注未来12个月中对关系影响最大的2-3个星象节点\n");
-            sb.append("7. essence珍藏锦囊必须是8条，每条15字以内\n");
-            sb.append("8. 营造'小登哥一对一为你深度解读'的专属感，让用户觉得'这说的就是我'\n\n");
+            sb.append("2. 只输出6章：关系底色、吸引力与张力、情绪安全感与沟通、摩擦场景、相处建议、结论与未来阶段提醒\n");
+            sb.append("3. '摩擦场景'章节：保留2个最关键场景，每个按'场景还原→你的期待→TA的实际反应→结果→真相'写\n");
+            sb.append("4. '相处建议'章节：固定3条，每条包含适用场景+你可以这样说（exact话术）+为什么有效（星座依据）\n");
+            sb.append("5. 最后只保留4条 essence，每条15字以内\n");
+            sb.append("6. 时间相关内容只分析从今天起未来3个月内的阶段提醒，不要展开未来12个月清单\n");
+            sb.append("7. 营造'小登哥一对一为你深度解读'的专属感，但优先短而准，不要重复铺陈\n\n");
         }
 
         sb.append("请用专业但有温度的中文写作，但最终只返回合法 JSON。");
@@ -464,6 +466,7 @@ public class CompatibilityService {
         sb.append("报告分数: ").append(calculatedScore).append("分\n");
         sb.append("阶段标签: ").append(stageLabel).append("\n");
         sb.append("请在报告中严格使用以上分数和阶段标签，不要自行编造。\n\n");
+        appendCurrentTimeContext(sb, reportType, isPremium);
 
         appendPersonInfo(sb, "A", a.getName(), a.getGender(), a.getBirthDate(),
                 a.getBirthTime(), a.getBirthPlace(), triA, isPremium);
@@ -483,6 +486,23 @@ public class CompatibilityService {
         }
         sb.append("请用专业但有温度的中文写作，但最终只返回合法 JSON。");
         return sb.toString();
+    }
+
+    private void appendCurrentTimeContext(StringBuilder sb, String reportType, boolean isPremium) {
+        LocalDate today = LocalDate.now(REPORT_TIME_ZONE);
+        sb.append("【当前时间锚点 - 必须遵守】\n");
+        sb.append("今天日期: ").append(today.format(PROMPT_DATE_FORMAT)).append("\n");
+        sb.append("当前月份: ").append(today.format(PROMPT_MONTH_FORMAT)).append("\n");
+        sb.append("当前时区: ").append(REPORT_TIME_ZONE.getId()).append("\n");
+        sb.append("所有“未来”“近期”“接下来”的判断，都必须以今天为起点。\n");
+        sb.append("不得把 ").append(today.format(PROMPT_DATE_FORMAT)).append(" 之前的年月写成未来。\n");
+        if (CompatibilityRequest.REPORT_TYPE_LOVE.equals(reportType)) {
+            sb.append("爱情主题只分析未来3个月内的关系阶段提醒，不要展开未来12个月清单。\n\n");
+        } else if (isPremium) {
+            sb.append("事业/财运深度版只分析未来3到6个月内的阶段节奏，不要展开未来12个月清单。\n\n");
+        } else {
+            sb.append("事业/财运免费版只分析未来30到90天内的阶段节奏。\n\n");
+        }
     }
 
     private void appendPersonInfo(StringBuilder sb, String label, String name, String gender,
@@ -776,7 +796,7 @@ public class CompatibilityService {
                 "从演化占星学的视角来看，" + nameA + "和" + nameB + "的相遇承载着某种灵魂层面的呼应。你们的月交点形成了有意义的连接——南交点的能量带来一种'似曾相识'的熟悉感，仿佛你们在某个时空里已经彼此认识；北交点则指向你们需要共同成长的方向。\n\n这段关系最重要的功课可能不是'相爱'本身，而是通过彼此看见自己。凯龙星如果被激活，意味着其中一人或双方都可能在这段关系里触及旧伤，但正因为如此，疗愈才可能真正发生。\n\n土星如果参与了重要相位，则说明这不是一段轻飘飘的缘分——它需要承诺、耐心和时间，但回报也最扎实。"));
             chapters.add(chapter(
                 scoringService.generateChapterTitle(7, triA.sun(), triB.sun(), true), "📅",
-                "从当前流年来看，接下来的12个月对你们的合盘有几个关键节点：第一，木星的运行会让某些月份关系扩张得更快，适合做出重要承诺；第二，土星的行进会考验关系的结构稳定度，如果根基不稳，那段时间是压力测试；第三，金星和水星逆行期是反思关系模式的窗口。\n\n对于" + nameA + "来说，建议在水星顺行期间做重要沟通，退行期则适合复盘而非提出新议题。对于" + nameB + "，当金星行经你的第七宫时，是一个推进关系的好时机。\n\n记住：星象是能量的天气，不是判决书。你们仍然拥有选择权。\n\n—— 小登哥 ✨"));
+                "从当前流年来看，接下来三个月更适合把重点放在关系节奏和边界感上：有些阶段适合推进重要沟通，有些阶段更适合复盘和观察，不要在情绪最满的时候做定论。\n\n对" + nameA + "来说，重要话题更适合在情绪平稳时摊开；对" + nameB + "来说，先说明真实感受，再谈立场，会让关系少很多误解。\n\n记住：星象是能量天气，不是判决书。真正决定关系走向的，仍然是你们的选择和回应。\n\n—— 小登哥 ✨"));
         }
 
         return chapters;
@@ -799,17 +819,6 @@ public class CompatibilityService {
         essence.add("情绪上来的时候先暂停，别急着判关系输赢。");
         essence.add("你们适合把模糊的问题说具体。");
         essence.add("真正拉开差距的，从来不是星座，是愿不愿意认真回应彼此。");
-
-        if (isPremium) {
-            essence.add("【短期】每周安排一次'无手机约会'，专注陪伴对方。");
-            essence.add("【短期】吵架后 24 小时内必须有一次非指责性沟通。");
-            essence.add("【短期】学会用对方的'爱的语言'表达关心。");
-            essence.add("【中期】每季度一起做一件新鲜事，保持关系的新鲜感。");
-            essence.add("【中期】建立共同的财务或生活目标，增强关系的稳定性。");
-            essence.add("【长期】定期回顾这份报告，看看哪些建议已经实现了。");
-            essence.add("【长期】重要决定避开水逆期，选择星象平稳的时候推进。");
-            essence.add("【长期】培养一个共同爱好，成为你们的'关系锚点'。");
-        }
 
         return essence;
     }
@@ -852,16 +861,6 @@ public class CompatibilityService {
                     "你的财运不是靠追热点堆出来的，而是靠持续的判断力和节奏感慢慢拉开差距。先把底盘稳住，机会来的时候你会更敢接。\n\n—— 小登哥 ✨"));
         }
 
-        if (isPremium) {
-            chapters.add(chapter("高阶机会窗口", "📅",
-                    CompatibilityRequest.REPORT_TYPE_CAREER.equals(reportType)
-                            ? "深度版建议你把未来12个月拆成三个阶段：一段用来冲曝光，一段用来稳结果，一段用来做关键转向。不要每个月都追求同一种推进方式，节奏比蛮力更重要。"
-                            : "深度版建议你把未来12个月拆成三个阶段：一段用来守现金流，一段用来试增量，一段用来放大有效渠道。不是每个机会都值得接，最重要的是筛选。"));
-            chapters.add(chapter("写给你的悄悄话", "🌟",
-                    CompatibilityRequest.REPORT_TYPE_CAREER.equals(reportType)
-                            ? "你真正的事业运，来自清楚自己该在什么地方出手、在什么地方留白。看见自己的节奏，比盯着别人的速度更有用。\n\n—— 小登哥 ✨"
-                            : "你真正的财运，来自会判断、会守、也敢在对的时候放大。先把底层习惯养好，钱才会更愿意留下来。\n\n—— 小登哥 ✨"));
-        }
         return chapters;
     }
 
@@ -875,23 +874,12 @@ public class CompatibilityService {
             essence.add("复盘比临时加班更值钱。");
             essence.add("别把犹豫包装成谨慎。");
             essence.add("会借力，推进才会更快。");
-            essence.add("稳定输出比偶尔爆发更重要。");
         } else {
             essence.add("先稳现金流，再谈放大。");
             essence.add("花钱前先分必要和冲动。");
             essence.add("副业优先选熟练项。");
             essence.add("预算比情绪更可靠。");
             essence.add("漏财常常从小口子开始。");
-            essence.add("把可复用资源盘清楚。");
-        }
-
-        if (isPremium) {
-            essence.add(CompatibilityRequest.REPORT_TYPE_CAREER.equals(reportType)
-                    ? "关键沟通尽量放在顺势窗口。"
-                    : "大额决策先隔一天再确认。");
-            essence.add(CompatibilityRequest.REPORT_TYPE_CAREER.equals(reportType)
-                    ? "给自己留一段纯思考时间。"
-                    : "账户分层会让安全感更强。");
         }
 
         return essence;
@@ -930,7 +918,7 @@ public class CompatibilityService {
 
     private String generateReportUid(String userName) {
         String initial = extractReportInitial(userName);
-        LocalDateTime now = LocalDateTime.now();
+        LocalDateTime now = LocalDateTime.now(REPORT_TIME_ZONE);
         String timestamp = now.format(REPORT_UID_TIMESTAMP);
         String prefix = initial + timestamp;
         long existingCount = repository.countByReportUidStartingWith(initial + now.toLocalDate().format(DateTimeFormatter.BASIC_ISO_DATE));
