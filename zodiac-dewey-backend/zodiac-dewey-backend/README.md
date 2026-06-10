@@ -1,158 +1,186 @@
-# 星座生肖运势分析系统
+# Zodiac Dewey Backend
 
-基于 Java Spring Boot + 前端静态页面的星座/生肖运势分析项目。
+占星报告、深度解析支付、返现账户与运营后台的统一后端服务。
 
-## 🌟 功能特性
+## 当前状态
 
-### 核心功能
-- ✅ **星座兼容性计算** - 基于瑞士星历表的精确计算
-- ✅ **AI 聊天服务** - 深度解析星座运势
-- ✅ **支付系统集成** - 支持静态收款码 + 后台手动确认模式
-- ✅ **管理后台** - 订单管理、数据分析、报告查询
-- ✅ **前端页面** - 响应式设计，支持移动端访问
+当前仓库已经不再使用 H2，默认数据库为 SQLite 文件数据库。
 
-### 支付模式
-当前采用 **静态收款码 + 手动确认** 模式：
-- 零成本：无开通费、无手续费
-- 钱直接到你的微信/支付宝
-- 管理员在后台确认每笔订单
+- 默认数据库：`SQLite`
+- 默认数据库文件：`./data/zodiac_dewey.db`
+- 默认后端端口：`8080`
+- 默认后台账号：`dewey`
+- 默认后台密码：`dewey`
 
-## 🚀 快速开始
+核心能力：
 
-### 后端启动
+- 爱情 / 事业 / 财运三主题报告生成
+- 免费版与深度解析版双链路
+- 微信 / 支付宝 / 抖音支付订单能力
+- 报告分享查询
+- 深度解析解锁记录
+- 返现账户、邀请绑定、返现记录、提现审核
+- 管理后台 API
 
-```bash
-cd zodiac-dewey-backend
-mvn clean package -DskipTests
-java -jar target/zodiac-dewey.jar
+## 目录结构
+
+```text
+zodiac-dewey-backend/
+├─ src/main/java/com/zodiac/api/
+│  ├─ config/         # 配置
+│  ├─ controller/     # API 控制器
+│  ├─ dto/            # 请求响应 DTO
+│  ├─ entity/         # JPA 实体
+│  ├─ exception/      # 异常
+│  ├─ repository/     # 数据访问层
+│  ├─ service/        # 业务服务
+│  └─ util/           # 工具类
+├─ src/main/resources/
+│  ├─ prompts/        # 各主题 prompt 资源
+│  ├─ application.yml # 主配置
+│  ├─ schema.sql      # 初始化表结构
+│  └─ birth-place-coordinates.json
+├─ data/              # SQLite 数据目录
+├─ target/
+├─ pom.xml
+└─ README.md
 ```
 
-服务启动在：`http://localhost:8080`
+## 技术栈
 
-### 前端访问
-
-直接访问后端提供的静态资源：
-- 首页：`http://localhost:8080`
-- 管理后台：`http://localhost:8080/admin.html`
-
-### 手机访问
-
-确保手机和电脑在同一 WiFi 下，访问：
-```
-http://你的电脑IP:8080
-```
-
-默认管理员账号：`dewey` / `dewey`
-
-## 📁 项目结构
-
-```
-zodiac/
-├── AGENTS.md              # AI 协作入口文件
-├── ai-docs/               # AI 协作文档
-│   ├── CURRENT_STATUS.md  # 当前项目状态
-│   ├── AI_HANDOFF.md     # AI 交接记录
-│   └── RECENT_FILES.md   # 最近修改文件
-├── zodiac-dewey-backend/  # 后端服务
-│   ├── src/main/java/
-│   │   └── com/zodiac/api/
-│   │       ├── controller/    # REST API 控制器
-│   │       ├── service/       # 业务逻辑
-│   │       ├── entity/        # 数据实体
-│   │       ├── repository/    # 数据访问层
-│   │       ├── util/          # 工具类
-│   │       └── config/        # 配置类
-│   ── src/main/resources/
-│       ── application.yml    # 应用配置
-└── zodiac-dewey-frontend/ # 前端页面
-    ── frontend/
-        ├── index.html         # 首页
-        ├── admin.html         # 管理后台
-        ├── assets/
-        │   ├── scripts/       # JavaScript
-        │   ── styles/        # CSS 样式
-        ── img/               # 图片资源
-            ├── alipay_qr.jpg  # 支付宝收款码
-            └── wechat_qr.jpg  # 微信收款码
-```
-
-##  技术栈
-
-### 后端
 - Java 17
 - Spring Boot 3.2.0
 - Spring Data JPA
-- H2 Database (内存数据库)
-- Lombok
+- SQLite
+- Hibernate Community Dialects
 - Caffeine Cache
+- Lombok
 
-### 前端
-- 原生 HTML/CSS/JavaScript
-- 响应式设计
-- 移动端适配
+## 数据库说明
 
-##  支付流程
+默认配置见：
 
+- [src/main/resources/application.yml](./src/main/resources/application.yml)
+
+当前默认配置：
+
+```yaml
+spring:
+  datasource:
+    url: jdbc:sqlite:./data/zodiac_dewey.db
+    driver-class-name: org.sqlite.JDBC
 ```
-用户填写信息 → 选择"深度解析" → 显示收款码
-→ 用户扫码付款 (19.9 元) → 管理员后台确认 → 用户获得权限
-```
 
-### API 端点
+说明：
 
-| 接口 | 方法 | 说明 |
-|-----|------|------|
-| `/api/pay/create-manual` | POST | 创建手动订单 |
-| `/api/pay/status/{订单号}` | GET | 查询订单状态 |
-| `/api/admin/login` | POST | 管理员登录 |
-| `/api/admin/orders` | GET | 订单列表 |
-| `/api/admin/orders/{订单号}/confirm` | POST | 确认订单已支付 |
+- 这是文件数据库，不是内存数据库
+- 服务重启后数据会保留
+- 报告、订单、解锁、返现、提现后台数据都使用同一个 SQLite 文件库
 
-## 🤖 AI 协作系统
+## 本地启动
 
-本项目使用 AI 协作系统，让多个 AI 工具能共享项目上下文。
-
-### 指令说明
-
-- `@read` - 读取 AI 协作文档（CURRENT_STATUS.md、AI_HANDOFF.md、RECENT_FILES.md）
-- `@recent` - 快速查看最近修改的文件
-
-### 文档说明
-
-- `AGENTS.md` - AI 入口文件，定义协作指令
-- `ai-docs/CURRENT_STATUS.md` - 当前项目状态
-- `ai-docs/AI_HANDOFF.md` - AI 交接记录
-- `ai-docs/RECENT_FILES.md` - 最近修改的文件列表
-
-##  配置说明
-
-### 环境变量
-
-复制 `.env.example` 为 `.env` 并填入真实值：
+### 1. 打包
 
 ```bash
-AI_API_KEY=sk-your-deepseek-key
-CLAUDE_API_KEY=sk-your-claude-key
-ADMIN_PASSWORD=your-admin-password
+mvn clean package -DskipTests
 ```
 
-### 收款码配置
+### 2. 启动
 
-将你的个人收款码放到：
-- `zodiac-dewey-frontend/frontend/img/alipay_qr.jpg`
-- `zodiac-dewey-frontend/frontend/img/wechat_qr.jpg`
+```bash
+java -jar target/zodiac-dewey.jar
+```
 
-## 🔐 安全说明
+启动后访问：
 
-- 管理员账号密码请在 `.env` 文件中配置
-- 切勿将 `.env` 文件提交到 Git
-- 生产环境请配置 HTTPS
+- 健康检查：`http://127.0.0.1:8080/api/health`
+- 后台登录接口：`http://127.0.0.1:8080/api/admin/login`
 
-## 📄 许可证
+## 环境变量
 
-MIT License
+常用环境变量：
 
----
+```bash
+SERVER_PORT=8080
+DB_URL=jdbc:sqlite:./data/zodiac_dewey.db
+DB_DRIVER=org.sqlite.JDBC
 
-**开发团队**: 小登哥团队  
-**最后更新**: 2026-05-25
+AI_API_KEY=your-deepseek-key
+AI_API_URL=https://api.deepseek.com/chat/completions
+AI_MODEL=deepseek-chat
+
+CLAUDE_API_KEY=your-claude-key
+CLAUDE_API_URL=https://api.anthropic.com/v1/messages
+CLAUDE_MODEL=claude-sonnet-4-6
+
+ADMIN_USERNAME=dewey
+ADMIN_PASSWORD=dewey
+ADMIN_SESSION_HOURS=12
+```
+
+建议复制：
+
+- [.env.example](./.env.example)
+
+然后按你的环境单独配置，不要把真实密钥提交到 Git。
+
+## 主要接口
+
+### 报告与分享
+
+- `POST /api/compatibility`
+- `GET /api/compatibility/report/{uid}`
+
+### 深度解析与支付
+
+- `POST /api/pay/create-order`
+- `GET /api/pay/status/{outTradeNo}`
+- `POST /api/premium/douyin-unlock`
+
+### 返现账户
+
+- `POST /api/referral/bind`
+- `POST /api/referral/visit`
+- `GET /api/referral/me`
+- `GET /api/referral/summary`
+- `GET /api/referral/records`
+- `POST /api/referral/withdrawals`
+
+### 后台管理
+
+- `POST /api/admin/login`
+- `GET /api/admin/overview`
+- `GET /api/admin/reports`
+- `GET /api/admin/orders`
+- `GET /api/admin/premium-unlocks`
+- `GET /api/admin/referral/users`
+- `GET /api/admin/referral/bindings`
+- `GET /api/admin/referral/rewards`
+- `GET /api/admin/referral/withdrawals`
+
+## 关联前端
+
+当前项目关联两个前端：
+
+- Web/H5：`D:/codex/zodiac/zodiac-dewey-frontend`
+- 小程序：`D:/codex/zodiac/zodiac-dewey-miniapp`
+
+说明：
+
+- H5 后台页地址通常是 `http://127.0.0.1:3000/admin.html`
+- H5 主站与小程序都复用当前后端 API
+
+## 注意事项
+
+- 当前默认数据库是 SQLite，不再使用 H2
+- 本地如需重新打包，请先停止占用中的 `target/zodiac-dewey.jar`
+- 生产环境建议单独配置：
+  - `ADMIN_USERNAME`
+  - `ADMIN_PASSWORD`
+  - `AI_API_KEY`
+  - `CLAUDE_API_KEY`
+  - `CORS_ALLOWED_ORIGINS`
+
+## License
+
+MIT
