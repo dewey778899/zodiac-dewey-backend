@@ -7,8 +7,8 @@ import com.zodiac.api.dto.AdminOrderLogResponse;
 import com.zodiac.api.dto.AdminOverviewResponse;
 import com.zodiac.api.dto.AdminReportPageResponse;
 import com.zodiac.api.entity.PayOrder;
-import com.zodiac.api.entity.PremiumUnlockRequest;
 import com.zodiac.api.entity.PaymentNotifyLog;
+import com.zodiac.api.entity.PremiumUnlockRequest;
 import com.zodiac.api.exception.AdminAuthException;
 import com.zodiac.api.repository.PayOrderRepository;
 import com.zodiac.api.repository.PaymentNotifyLogRepository;
@@ -16,6 +16,7 @@ import com.zodiac.api.service.AdminAuthService;
 import com.zodiac.api.service.AdminDashboardService;
 import com.zodiac.api.service.PaymentFacadeService;
 import com.zodiac.api.service.PremiumUnlockService;
+import com.zodiac.api.service.ReferralService;
 import com.zodiac.api.util.IpUtil;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
@@ -25,7 +26,13 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Sort;
 import org.springframework.http.ResponseEntity;
-import org.springframework.web.bind.annotation.*;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.RestController;
 
 import java.time.format.DateTimeFormatter;
 import java.util.LinkedHashMap;
@@ -44,6 +51,7 @@ public class AdminController {
     private final AdminDashboardService adminDashboardService;
     private final PaymentFacadeService paymentFacadeService;
     private final PremiumUnlockService premiumUnlockService;
+    private final ReferralService referralService;
     private final PayOrderRepository payOrderRepository;
     private final PaymentNotifyLogRepository paymentNotifyLogRepository;
 
@@ -56,7 +64,7 @@ public class AdminController {
     public ResponseEntity<?> login(@Valid @RequestBody AdminLoginRequest request,
                                    HttpServletRequest httpReq) {
         String ip = IpUtil.getClientIp(httpReq);
-        AtomicInteger attempts = loginAttempts.get(ip, k -> new AtomicInteger(0));
+        AtomicInteger attempts = loginAttempts.get(ip, key -> new AtomicInteger(0));
         if (attempts.incrementAndGet() > 10) {
             return ResponseEntity.status(429).body(Map.of(
                     "error", "rate_limited",
@@ -128,6 +136,19 @@ public class AdminController {
         return ResponseEntity.ok(paymentFacadeService.getOrderStatus(outTradeNo));
     }
 
+    @PostMapping("/orders/{outTradeNo}/approve-unlock")
+    public ResponseEntity<?> approveUnlock(HttpServletRequest request,
+                                           @PathVariable String outTradeNo,
+                                           @RequestBody(required = false) UnlockActionRequest body) {
+        requireAdmin(request);
+        String operator = resolveToken(request);
+        return ResponseEntity.ok(paymentFacadeService.adminApproveUnlock(
+                outTradeNo,
+                operator,
+                body == null ? null : body.getRemark()
+        ));
+    }
+
     @PostMapping("/orders/{outTradeNo}/close")
     public ResponseEntity<?> closeOrder(HttpServletRequest request,
                                         @PathVariable String outTradeNo) {
@@ -177,25 +198,158 @@ public class AdminController {
         return ResponseEntity.ok(resp);
     }
 
+    @GetMapping("/referral/overview")
+    public ResponseEntity<?> referralOverview(HttpServletRequest request) {
+        requireAdmin(request);
+        Map<String, Object> resp = new LinkedHashMap<>();
+        resp.put("users", referralService.listUsers().size());
+        resp.put("bindings", referralService.listBindings().size());
+        resp.put("rewards", referralService.listRewards().size());
+        resp.put("withdrawals", referralService.listWithdrawals().size());
+        return ResponseEntity.ok(resp);
+    }
+
+    @GetMapping("/referral/users")
+    public ResponseEntity<?> referralUsers(HttpServletRequest request) {
+        requireAdmin(request);
+        return ResponseEntity.ok(referralService.listUsers().stream().map(user -> {
+            Map<String, Object> data = new LinkedHashMap<>();
+            data.put("id", user.getId());
+            data.put("phone", user.getPhone());
+            data.put("inviteCode", user.getInviteCode());
+            data.put("displayName", user.getDisplayName());
+            data.put("balanceFen", user.getBalanceFen());
+            data.put("withdrawableFen", user.getWithdrawableFen());
+            data.put("frozenFen", user.getFrozenFen());
+            data.put("withdrawnFen", user.getWithdrawnFen());
+            data.put("premiumPaidCount", user.getPremiumPaidCount());
+            data.put("inviterEligible", user.getInviterEligible());
+            data.put("wechatOpenid", user.getWechatOpenid());
+            data.put("douyinOpenid", user.getDouyinOpenid());
+            data.put("createdAt", user.getCreatedAt());
+            return data;
+        }).toList());
+    }
+
+    @GetMapping("/referral/bindings")
+    public ResponseEntity<?> referralBindings(HttpServletRequest request) {
+        requireAdmin(request);
+        return ResponseEntity.ok(referralService.listBindings().stream().map(binding -> {
+            Map<String, Object> data = new LinkedHashMap<>();
+            data.put("id", binding.getId());
+            data.put("inviterUserId", binding.getInviterUserId());
+            data.put("inviteeUserId", binding.getInviteeUserId());
+            data.put("inviteCode", binding.getInviteCode());
+            data.put("bindSource", binding.getBindSource());
+            data.put("boundAt", binding.getBoundAt());
+            return data;
+        }).toList());
+    }
+
+    @PostMapping("/referral/bindings/rebind")
+    public ResponseEntity<?> referralRebind(HttpServletRequest request,
+                                            @RequestBody RebindReferralRequest body) {
+        requireAdmin(request);
+        return ResponseEntity.ok(referralService.rebindInvitee(body.getInviteeUserId(), body.getInviterUserId(), body.getSource()));
+    }
+
+    @GetMapping("/referral/rewards")
+    public ResponseEntity<?> referralRewards(HttpServletRequest request) {
+        requireAdmin(request);
+        return ResponseEntity.ok(referralService.listRewards().stream().map(reward -> {
+            Map<String, Object> data = new LinkedHashMap<>();
+            data.put("id", reward.getId());
+            data.put("payOrderId", reward.getPayOrderId());
+            data.put("inviterUserId", reward.getInviterUserId());
+            data.put("inviteeUserId", reward.getInviteeUserId());
+            data.put("amountFen", reward.getAmountFen());
+            data.put("status", reward.getStatus());
+            data.put("withdrawalId", reward.getWithdrawalId());
+            data.put("settledAt", reward.getSettledAt());
+            return data;
+        }).toList());
+    }
+
+    @PostMapping("/referral/rewards/issue")
+    public ResponseEntity<?> referralIssueReward(HttpServletRequest request,
+                                                 @RequestBody RewardActionRequest body) {
+        requireAdmin(request);
+        return ResponseEntity.ok(referralService.issueReward(
+                body.getPayOrderId(),
+                body.getInviterUserId(),
+                body.getAmountFen(),
+                body.getRemark()
+        ));
+    }
+
+    @PostMapping("/referral/rewards/{rewardId}/cancel")
+    public ResponseEntity<?> referralCancelReward(HttpServletRequest request,
+                                                  @PathVariable Long rewardId,
+                                                  @RequestBody(required = false) RewardActionRequest body) {
+        requireAdmin(request);
+        return ResponseEntity.ok(referralService.cancelReward(rewardId, body == null ? null : body.getRemark()));
+    }
+
+    @GetMapping("/referral/withdrawals")
+    public ResponseEntity<?> referralWithdrawals(HttpServletRequest request) {
+        requireAdmin(request);
+        return ResponseEntity.ok(referralService.listWithdrawals().stream().map(withdrawal -> {
+            Map<String, Object> data = new LinkedHashMap<>();
+            data.put("id", withdrawal.getId());
+            data.put("userId", withdrawal.getUserId());
+            data.put("amountFen", withdrawal.getAmountFen());
+            data.put("status", withdrawal.getStatus());
+            data.put("withdrawPlatform", withdrawal.getWithdrawPlatform());
+            data.put("payeeAccountSnapshot", withdrawal.getPayeeAccountSnapshot());
+            data.put("remark", withdrawal.getRemark());
+            data.put("createdAt", withdrawal.getCreatedAt());
+            data.put("updatedAt", withdrawal.getUpdatedAt());
+            return data;
+        }).toList());
+    }
+
+    @PostMapping("/referral/withdrawals/{withdrawalId}/approve")
+    public ResponseEntity<?> approveWithdrawal(HttpServletRequest request,
+                                               @PathVariable Long withdrawalId,
+                                               @RequestBody(required = false) WithdrawalActionRequest body) {
+        requireAdmin(request);
+        return ResponseEntity.ok(referralService.approveWithdrawal(withdrawalId, body == null ? null : body.getRemark()));
+    }
+
+    @PostMapping("/referral/withdrawals/{withdrawalId}/reject")
+    public ResponseEntity<?> rejectWithdrawal(HttpServletRequest request,
+                                              @PathVariable Long withdrawalId,
+                                              @RequestBody(required = false) WithdrawalActionRequest body) {
+        requireAdmin(request);
+        return ResponseEntity.ok(referralService.rejectWithdrawal(withdrawalId, body == null ? null : body.getRemark()));
+    }
+
     private Map<String, Object> toOrderMap(PayOrder order) {
-        Map<String, Object> m = new LinkedHashMap<>();
-        m.put("id", order.getId());
-        m.put("outTradeNo", order.getOutTradeNo());
-        m.put("channel", lower(order.getChannel()));
-        m.put("scene", order.getSceneCode());
-        m.put("tradeType", order.getTradeType());
-        m.put("subject", order.getSubject());
-        m.put("amountFen", order.getAmountFen());
-        m.put("status", order.getStatus());
-        m.put("reportType", order.getReportType());
-        m.put("notifyVerified", order.getNotifyVerified());
-        m.put("tokenConsumed", order.getTokenConsumedAt() != null);
-        m.put("createdAt", order.getCreatedAt());
-        m.put("paidAt", order.getPaidAt());
-        m.put("closedAt", order.getClosedAt());
-        m.put("expiresAt", order.getExpiresAt());
-        m.put("failReason", order.getFailReason());
-        return m;
+        Map<String, Object> data = new LinkedHashMap<>();
+        data.put("id", order.getId());
+        data.put("outTradeNo", order.getOutTradeNo());
+        data.put("channel", lower(order.getChannel()));
+        data.put("scene", order.getSceneCode());
+        data.put("tradeType", order.getTradeType());
+        data.put("subject", order.getSubject());
+        data.put("amountFen", order.getAmountFen());
+        data.put("status", order.getStatus());
+        data.put("reportType", order.getReportType());
+        data.put("notifyVerified", order.getNotifyVerified());
+        data.put("tokenConsumed", order.getTokenConsumedAt() != null);
+        data.put("unlockStatus", order.getUnlockStatus());
+        data.put("unlockSource", order.getUnlockSource());
+        data.put("unlockGrantedAt", order.getUnlockGrantedAt());
+        data.put("unlockGrantedBy", order.getUnlockGrantedBy());
+        data.put("unlockRemark", order.getUnlockRemark());
+        data.put("referralUserId", order.getReferralUserId());
+        data.put("referralSettled", order.getReferralSettled());
+        data.put("createdAt", order.getCreatedAt());
+        data.put("paidAt", order.getPaidAt());
+        data.put("closedAt", order.getClosedAt());
+        data.put("expiresAt", order.getExpiresAt());
+        data.put("failReason", order.getFailReason());
+        return data;
     }
 
     private AdminOrderLogResponse.NotifyLogItem toLogItem(PaymentNotifyLog log) {
@@ -232,6 +386,7 @@ public class AdminController {
         if (channel == null || channel.isBlank()) return null;
         if ("wechat".equalsIgnoreCase(channel)) return PayOrder.CHANNEL_WECHAT;
         if ("alipay".equalsIgnoreCase(channel)) return PayOrder.CHANNEL_ALIPAY;
+        if ("douyin".equalsIgnoreCase(channel) || "tt".equalsIgnoreCase(channel)) return PayOrder.CHANNEL_DOUYIN;
         return channel.trim().toUpperCase();
     }
 
@@ -247,5 +402,30 @@ public class AdminController {
     public static class RepairPaidRequest {
         private String channel;
         private String transactionId;
+    }
+
+    @Data
+    public static class RebindReferralRequest {
+        private Long inviteeUserId;
+        private Long inviterUserId;
+        private String source;
+    }
+
+    @Data
+    public static class RewardActionRequest {
+        private Long payOrderId;
+        private Long inviterUserId;
+        private Integer amountFen;
+        private String remark;
+    }
+
+    @Data
+    public static class WithdrawalActionRequest {
+        private String remark;
+    }
+
+    @Data
+    public static class UnlockActionRequest {
+        private String remark;
     }
 }

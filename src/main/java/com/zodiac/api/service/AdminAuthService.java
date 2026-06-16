@@ -3,11 +3,11 @@ package com.zodiac.api.service;
 import com.github.benmanes.caffeine.cache.Cache;
 import com.github.benmanes.caffeine.cache.Caffeine;
 import com.zodiac.api.exception.AdminAuthException;
+import jakarta.annotation.PostConstruct;
 import lombok.Getter;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
-import jakarta.annotation.PostConstruct;
 import java.security.SecureRandom;
 import java.time.LocalDateTime;
 import java.util.Base64;

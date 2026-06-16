@@ -48,6 +48,7 @@ public class PaymentEntitlementService {
                 .filter(this::isEntitlementAvailable)
                 .map(order -> {
                     order.setTokenConsumedAt(LocalDateTime.now());
+                    order.setUnlockStatus(PayOrder.UNLOCK_STATUS_CONSUMED);
                     payOrderRepository.save(order);
                     return true;
                 })
@@ -76,13 +77,39 @@ public class PaymentEntitlementService {
 
     @Transactional
     public void markPaid(PayOrder order) {
+        markPaid(order, PayOrder.UNLOCK_SOURCE_PAYMENT_AUTO, null, null);
+    }
+
+    @Transactional
+    public void markPaid(PayOrder order, String unlockSource, String unlockGrantedBy, String unlockRemark) {
         if (PayOrder.STATUS_PAID.equals(order.getStatus())) {
             ensureAccessToken(order);
+            if (order.getUnlockGrantedAt() == null) {
+                order.setUnlockGrantedAt(LocalDateTime.now());
+            }
+            if (order.getUnlockStatus() == null || PayOrder.UNLOCK_STATUS_LOCKED.equals(order.getUnlockStatus())) {
+                order.setUnlockStatus(PayOrder.UNLOCK_STATUS_UNLOCKED);
+            }
+            if (unlockSource != null && !unlockSource.isBlank()) {
+                order.setUnlockSource(unlockSource);
+            }
+            if (unlockGrantedBy != null && !unlockGrantedBy.isBlank()) {
+                order.setUnlockGrantedBy(unlockGrantedBy);
+            }
+            if (unlockRemark != null && !unlockRemark.isBlank()) {
+                order.setUnlockRemark(unlockRemark);
+            }
+            payOrderRepository.save(order);
             return;
         }
         order.setStatus(PayOrder.STATUS_PAID);
         order.setPaidAt(LocalDateTime.now());
         ensureAccessToken(order);
+        order.setUnlockStatus(PayOrder.UNLOCK_STATUS_UNLOCKED);
+        order.setUnlockSource((unlockSource == null || unlockSource.isBlank()) ? PayOrder.UNLOCK_SOURCE_PAYMENT_AUTO : unlockSource);
+        order.setUnlockGrantedAt(LocalDateTime.now());
+        order.setUnlockGrantedBy(unlockGrantedBy);
+        order.setUnlockRemark(unlockRemark);
         payOrderRepository.save(order);
         log.info("Payment entitlement granted: outTradeNo={}", order.getOutTradeNo());
     }

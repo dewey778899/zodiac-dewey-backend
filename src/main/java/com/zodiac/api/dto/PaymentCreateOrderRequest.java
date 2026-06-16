@@ -27,6 +27,8 @@ public class PaymentCreateOrderRequest {
 
     private String outTradeNo;
 
+    private String phone;
+
     private ClientContext clientContext;
 
     @Data

@@ -28,8 +28,19 @@ public class PayOrder {
     public static final String STATUS_REFUND_PENDING = "REFUND_PENDING";
     public static final String STATUS_REFUNDED = "REFUNDED";
 
+    public static final String UNLOCK_STATUS_LOCKED = "LOCKED";
+    public static final String UNLOCK_STATUS_UNLOCKED = "UNLOCKED";
+    public static final String UNLOCK_STATUS_CONSUMED = "CONSUMED";
+    public static final String UNLOCK_STATUS_EXPIRED = "EXPIRED";
+
+    public static final String UNLOCK_SOURCE_PAYMENT_AUTO = "PAYMENT_AUTO";
+    public static final String UNLOCK_SOURCE_ADMIN_APPROVED = "ADMIN_APPROVED";
+    public static final String UNLOCK_SOURCE_ADMIN_REPAIRED = "ADMIN_REPAIRED";
+    public static final String UNLOCK_SOURCE_DOUYIN_FOLLOW = "DOUYIN_FOLLOW";
+
     public static final String CHANNEL_WECHAT = "WECHAT";
     public static final String CHANNEL_ALIPAY = "ALIPAY";
+    public static final String CHANNEL_DOUYIN = "DOUYIN";
 
     public static final String TRADE_TYPE_JSAPI = "JSAPI";
     public static final String TRADE_TYPE_H5 = "H5";
@@ -114,6 +125,12 @@ public class PayOrder {
     @Column(name = "device_token", length = 128)
     private String deviceToken;
 
+    @Column(name = "referral_user_id")
+    private Long referralUserId;
+
+    @Column(name = "referral_settled")
+    private Boolean referralSettled;
+
     @Column(name = "scene_code", length = 30)
     private String sceneCode;
 
@@ -131,6 +148,21 @@ public class PayOrder {
 
     @Column(name = "token_consumed_at")
     private LocalDateTime tokenConsumedAt;
+
+    @Column(name = "unlock_status", length = 32, nullable = false)
+    private String unlockStatus = UNLOCK_STATUS_LOCKED;
+
+    @Column(name = "unlock_source", length = 64)
+    private String unlockSource;
+
+    @Column(name = "unlock_granted_at")
+    private LocalDateTime unlockGrantedAt;
+
+    @Column(name = "unlock_granted_by", length = 128)
+    private String unlockGrantedBy;
+
+    @Column(name = "unlock_remark", length = 1000)
+    private String unlockRemark;
 
     @Column(name = "last_status_sync_at")
     private LocalDateTime lastStatusSyncAt;

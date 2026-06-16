@@ -37,6 +37,7 @@ public class PaymentFacadeService {
     private final PaymentEntitlementService paymentEntitlementService;
     private final PaymentProperties paymentProperties;
     private final AnalyticsService analyticsService;
+    private final ReferralService referralService;
 
     @Transactional
     public PaymentOrderResponse createOrder(PaymentCreateOrderRequest request, String clientIp) {
@@ -71,6 +72,8 @@ public class PaymentFacadeService {
                 .channel(channel.toLowerCase())
                 .scene(scene)
                 .paid(PayOrder.STATUS_PAID.equals(order.getStatus()))
+                .unlockStatus(order.getUnlockStatus())
+                .unlockSource(order.getUnlockSource())
                 .expireAt(order.getExpiresAt())
                 .payPayload(payPayload)
                 .build();
@@ -89,6 +92,8 @@ public class PaymentFacadeService {
                 .channel(order.getChannel() == null ? null : order.getChannel().toLowerCase())
                 .scene(order.getSceneCode())
                 .tokenConsumed(order.getTokenConsumedAt() != null)
+                .unlockStatus(order.getUnlockStatus())
+                .unlockSource(order.getUnlockSource())
                 .build();
     }
 
@@ -135,6 +140,30 @@ public class PaymentFacadeService {
                 null,
                 null
         );
+    }
+
+    @Transactional
+    public PaymentOrderStatusResponse adminApproveUnlock(String outTradeNo, String approvedBy, String remark) {
+        PayOrder order = payOrderRepository.findByOutTradeNo(outTradeNo)
+                .orElseThrow(() -> new PaymentException("order_not_found", "订单不存在", HttpStatus.NOT_FOUND));
+
+        paymentEntitlementService.markPaid(
+                order,
+                PayOrder.UNLOCK_SOURCE_ADMIN_APPROVED,
+                approvedBy,
+                remark == null || remark.isBlank() ? "后台人工审批解锁" : remark.trim()
+        );
+        referralService.settleRewardForPaidOrder(order);
+        paymentNotifyService.writeLog(
+                outTradeNo,
+                order.getChannel(),
+                "UNLOCK_APPROVE",
+                true,
+                "UNLOCKED",
+                null,
+                "ADMIN_APPROVED"
+        );
+        return getOrderStatus(outTradeNo);
     }
 
     @Transactional
@@ -188,6 +217,8 @@ public class PaymentFacadeService {
         order.setAmountFen(paymentProperties.getAmountFen());
         order.setClientIp(clientIp);
         order.setOpenid(blankToNull(request.getOpenid()));
+        order.setReferralUserId(referralService.resolveUserIdByPhone(request.getPhone()));
+        order.setReferralSettled(false);
         order.setReportType(blankToNull(request.getReportType()));
         order.setDeviceToken(request.getClientContext() == null ? null : blankToNull(request.getClientContext().getDeviceToken()));
         order.setReturnUrl(blankToNull(request.getReturnUrl()));

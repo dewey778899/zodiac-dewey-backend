@@ -13,4 +13,6 @@ public class PaymentOrderStatusResponse {
     private String channel;
     private String scene;
     private boolean tokenConsumed;
+    private String unlockStatus;
+    private String unlockSource;
 }

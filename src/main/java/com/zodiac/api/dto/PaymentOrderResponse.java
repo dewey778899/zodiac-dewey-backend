@@ -15,6 +15,8 @@ public class PaymentOrderResponse {
     private String scene;
     private boolean paid;
     private String accessToken;
+    private String unlockStatus;
+    private String unlockSource;
     private LocalDateTime expireAt;
     private Map<String, Object> payPayload;
 }

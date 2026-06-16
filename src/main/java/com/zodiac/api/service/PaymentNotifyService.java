@@ -20,6 +20,7 @@ public class PaymentNotifyService {
     private final PaymentNotifyLogRepository paymentNotifyLogRepository;
     private final PaymentEntitlementService paymentEntitlementService;
     private final AnalyticsService analyticsService;
+    private final ReferralService referralService;
 
     @Transactional
     public void handlePaidNotification(String channel,
@@ -56,7 +57,8 @@ public class PaymentNotifyService {
         } else if (PayOrder.CHANNEL_ALIPAY.equals(channel)) {
             order.setAlipayTradeNo(transactionId);
         }
-        paymentEntitlementService.markPaid(order);
+        paymentEntitlementService.markPaid(order, PayOrder.UNLOCK_SOURCE_PAYMENT_AUTO, "system-notify", null);
+        referralService.settleRewardForPaidOrder(order);
         analyticsService.recordFrontendEvent(buildPaidAnalytics(channel), null, null);
 
         logEntity.setProcessResult("PAID");
