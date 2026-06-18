@@ -12,6 +12,7 @@ public class WechatPayConfig {
     private boolean enabled;
     private String mchId;
     private String appId;
+    private String appSecret;
     private String apiV3Key;
     private String mchSerialNo;
     private String privateKeyPath;

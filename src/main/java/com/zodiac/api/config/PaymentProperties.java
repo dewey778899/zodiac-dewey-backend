@@ -9,7 +9,7 @@ import org.springframework.stereotype.Component;
 @ConfigurationProperties(prefix = "payment.common")
 public class PaymentProperties {
 
-    private int amountFen = 1990;
+    private int amountFen = 2990;
     private int orderExpireMinutes = 30;
     private long successPollIntervalMs = 3000L;
     private long successPollTimeoutMs = 180000L;

@@ -74,7 +74,7 @@ admin:
 
 payment:
   common:
-    amount-fen: ${PAY_AMOUNT_FEN:1990}
+    amount-fen: ${PAY_AMOUNT_FEN:2990}
     order-expire-minutes: ${PAY_ORDER_EXPIRE_MINUTES:30}
     success-poll-interval-ms: ${PAY_SUCCESS_POLL_INTERVAL_MS:3000}
     success-poll-timeout-ms: ${PAY_SUCCESS_POLL_TIMEOUT_MS:180000}
@@ -84,6 +84,7 @@ payment:
     enabled: ${WECHAT_PAY_ENABLED:false}
     mch-id: ${WECHAT_PAY_MCH_ID:}
     app-id: ${WECHAT_PAY_APP_ID:}
+    app-secret: ${WECHAT_PAY_APP_SECRET:}
     api-v3-key: ${WECHAT_PAY_API_V3_KEY:}
     mch-serial-no: ${WECHAT_PAY_MCH_SERIAL_NO:}
     private-key-path: ${WECHAT_PAY_PRIVATE_KEY_PATH:}
