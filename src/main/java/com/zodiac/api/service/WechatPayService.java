@@ -97,7 +97,7 @@ public class WechatPayService {
                 body.put("payer", payer);
             } else if ("wechat_h5".equals(scene)) {
                 path = H5_PATH;
-                Map<String, String> sceneInfo = new LinkedHashMap<>();
+                Map<String, Object> sceneInfo = new LinkedHashMap<>();
                 Map<String, String> h5Info = new LinkedHashMap<>();
                 h5Info.put("type", "Wap");
                 h5Info.put("wap_url", blankToNull(order.getReturnUrl()) != null ? order.getReturnUrl() : config.getH5ReturnUrl());
