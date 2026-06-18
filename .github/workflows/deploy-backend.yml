@@ -10,7 +10,7 @@ on:
 
 env:
   PROJECT_NAME: zodiac-dewey-backend
-  ACR_REGISTRY: registry-vpc.cn-shanghai.aliyuncs.com
+  ACR_REGISTRY: registry.cn-shanghai.aliyuncs.com
   ACR_NAMESPACE: dewey_zodiac
 
 jobs:
