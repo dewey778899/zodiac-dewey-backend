@@ -16,6 +16,11 @@ import java.util.Map;
 @RequiredArgsConstructor
 public class AlipayService {
 
+    public static final String OPENAPI_GATEWAY_URL = "https://openapi.alipay.com/gateway.do";
+    public static final String WAP_PAY_METHOD = "alipay.trade.wap.pay";
+    public static final String QUERY_PAY_METHOD = "alipay.trade.query";
+    public static final String NOTIFY_FORMAT = "form-urlencoded";
+
     private final AlipayConfig config;
     private final PaymentProperties paymentProperties;
 
@@ -29,13 +34,17 @@ public class AlipayService {
         ensureConfigured();
 
         order.setTradeType(PayOrder.TRADE_TYPE_WAP);
-        String payUrl = "https://openapi.alipay.com/gateway.do?mockWapPay=1&out_trade_no=" + order.getOutTradeNo();
+        String payUrl = OPENAPI_GATEWAY_URL;
         String formHtml = "<form id=\"alipay-submit\" action=\"" + payUrl + "\" method=\"GET\"></form>";
         order.setAlipayFormHtml(formHtml);
 
         Map<String, Object> payload = new LinkedHashMap<>();
         payload.put("payUrl", payUrl);
         payload.put("formHtml", formHtml);
+        payload.put("officialGatewayUrl", OPENAPI_GATEWAY_URL);
+        payload.put("officialPayMethod", WAP_PAY_METHOD);
+        payload.put("officialQueryMethod", QUERY_PAY_METHOD);
+        payload.put("officialNotifyFormat", NOTIFY_FORMAT);
         payload.put("returnUrl", order.getReturnUrl() == null || order.getReturnUrl().isBlank()
                 ? config.getReturnUrl()
                 : order.getReturnUrl());
@@ -55,6 +64,10 @@ public class AlipayService {
         Map<String, Object> payload = new LinkedHashMap<>();
         payload.put("payUrl", payUrl);
         payload.put("formHtml", order.getAlipayFormHtml());
+        payload.put("officialGatewayUrl", OPENAPI_GATEWAY_URL);
+        payload.put("officialPayMethod", WAP_PAY_METHOD);
+        payload.put("officialQueryMethod", QUERY_PAY_METHOD);
+        payload.put("officialNotifyFormat", NOTIFY_FORMAT);
         payload.put("mode", "WAP");
         payload.put("enabled", false);
         payload.put("mock", true);
