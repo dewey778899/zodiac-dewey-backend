@@ -15,8 +15,10 @@ public class WechatPayConfig {
     private String apiV3Key;
     private String mchSerialNo;
     private String privateKeyPath;
+    private String clientCertPath;
     private String platformCertPath;
     private String notifyUrl;
     private String h5ReturnUrl;
     private String oauthRedirectUrl;
+    private String appSecret;
 }

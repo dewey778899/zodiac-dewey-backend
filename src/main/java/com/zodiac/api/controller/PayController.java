@@ -8,6 +8,7 @@ import com.zodiac.api.exception.PaymentException;
 import com.zodiac.api.repository.PayOrderRepository;
 import com.zodiac.api.service.PaymentFacadeService;
 import com.zodiac.api.service.PaymentNotifyService;
+import com.zodiac.api.service.WechatPayService;
 import com.zodiac.api.util.IpUtil;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
@@ -25,6 +26,7 @@ public class PayController {
 
     private final PaymentFacadeService paymentFacadeService;
     private final PaymentNotifyService paymentNotifyService;
+    private final WechatPayService wechatPayService;
     private final PayOrderRepository payOrderRepository;
     private final ObjectMapper objectMapper;
 
@@ -52,13 +54,31 @@ public class PayController {
 
     @PostMapping("/api/pay/notify/wechat")
     public ResponseEntity<?> notifyWechat(@RequestBody(required = false) String rawBody,
-                                          @RequestParam Map<String, String> params) {
-        String outTradeNo = params.getOrDefault("out_trade_no", params.get("outTradeNo"));
-        String transactionId = params.getOrDefault("transaction_id", params.get("transactionId"));
+                                          @RequestParam Map<String, String> params,
+                                          @RequestHeader(value = "Wechatpay-Timestamp", required = false) String timestamp,
+                                          @RequestHeader(value = "Wechatpay-Nonce", required = false) String nonce,
+                                          @RequestHeader(value = "Wechatpay-Serial", required = false) String serial,
+                                          @RequestHeader(value = "Wechatpay-Signature", required = false) String signature) {
         String raw = rawBody == null || rawBody.isBlank() ? safeJson(params) : rawBody;
-        boolean verified = Boolean.parseBoolean(params.getOrDefault("verified", "false"));
-        if (outTradeNo == null || outTradeNo.isBlank()) {
-            paymentNotifyService.writeLog(null, PayOrder.CHANNEL_WECHAT, "PAYMENT", false, "IGNORED", "缺少订单号", raw);
+        boolean verified = !isBlank(signature)
+                ? wechatPayService.verifyCallback(timestamp, nonce, raw, serial, signature)
+                : Boolean.parseBoolean(params.getOrDefault("verified", "false"));
+        Map<String, Object> payload = verified && rawBody != null && !rawBody.isBlank()
+                ? wechatPayService.decryptCallbackResource(raw)
+                : new LinkedHashMap<>(params);
+
+        String outTradeNo = firstNonBlank(
+                getNestedString(payload, "resource", "out_trade_no"),
+                params.get("out_trade_no"),
+                params.get("outTradeNo")
+        );
+        String transactionId = firstNonBlank(
+                getNestedString(payload, "resource", "transaction_id"),
+                params.get("transaction_id"),
+                params.get("transactionId")
+        );
+        if (isBlank(outTradeNo)) {
+            paymentNotifyService.writeLog(null, PayOrder.CHANNEL_WECHAT, "PAYMENT", false, "IGNORED", "missing out_trade_no", raw);
             return ResponseEntity.badRequest().body(Map.of("code", "FAIL", "message", "missing out_trade_no"));
         }
         paymentNotifyService.handlePaidNotification(PayOrder.CHANNEL_WECHAT, outTradeNo, raw, verified, transactionId);
@@ -68,12 +88,12 @@ public class PayController {
     @PostMapping("/api/pay/notify/alipay")
     public String notifyAlipay(@RequestParam Map<String, String> params,
                                @RequestBody(required = false) String rawBody) {
-        String outTradeNo = params.getOrDefault("out_trade_no", params.get("outTradeNo"));
-        String transactionId = params.getOrDefault("trade_no", params.get("tradeNo"));
+        String outTradeNo = firstNonBlank(params.get("out_trade_no"), params.get("outTradeNo"));
+        String transactionId = firstNonBlank(params.get("trade_no"), params.get("tradeNo"));
         String raw = rawBody == null || rawBody.isBlank() ? safeJson(params) : rawBody;
         boolean verified = Boolean.parseBoolean(params.getOrDefault("verified", "false"));
-        if (outTradeNo == null || outTradeNo.isBlank()) {
-            paymentNotifyService.writeLog(null, PayOrder.CHANNEL_ALIPAY, "PAYMENT", false, "IGNORED", "缺少订单号", raw);
+        if (isBlank(outTradeNo)) {
+            paymentNotifyService.writeLog(null, PayOrder.CHANNEL_ALIPAY, "PAYMENT", false, "IGNORED", "missing out_trade_no", raw);
             return "fail";
         }
         paymentNotifyService.handlePaidNotification(PayOrder.CHANNEL_ALIPAY, outTradeNo, raw, verified, transactionId);
@@ -123,5 +143,34 @@ public class PayController {
         } catch (Exception e) {
             return String.valueOf(params);
         }
+    }
+
+    private String firstNonBlank(String... values) {
+        if (values == null) {
+            return null;
+        }
+        for (String value : values) {
+            if (value != null && !value.isBlank()) {
+                return value;
+            }
+        }
+        return null;
+    }
+
+    @SuppressWarnings("unchecked")
+    private String getNestedString(Map<String, Object> payload, String parentKey, String childKey) {
+        if (payload == null) {
+            return null;
+        }
+        Object parent = payload.get(parentKey);
+        if (!(parent instanceof Map<?, ?> nested)) {
+            return null;
+        }
+        Object value = ((Map<String, Object>) nested).get(childKey);
+        return value == null ? null : String.valueOf(value);
+    }
+
+    private boolean isBlank(String value) {
+        return value == null || value.isBlank();
     }
 }
