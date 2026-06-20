@@ -21,5 +21,4 @@ public class WechatPayConfig {
     private String notifyUrl;
     private String h5ReturnUrl;
     private String oauthRedirectUrl;
-    private String appSecret;
 }

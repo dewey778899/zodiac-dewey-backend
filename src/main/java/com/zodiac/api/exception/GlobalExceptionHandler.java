@@ -6,6 +6,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+import org.springframework.web.servlet.resource.NoResourceFoundException;
 
 import java.util.Map;
 
@@ -38,6 +39,14 @@ public class GlobalExceptionHandler {
         return ResponseEntity.status(e.getStatus()).body(Map.of(
                 "error", e.getErrorCode(),
                 "message", e.getMessage()
+        ));
+    }
+
+    @ExceptionHandler(NoResourceFoundException.class)
+    public ResponseEntity<?> notFound(NoResourceFoundException e) {
+        return ResponseEntity.status(HttpStatus.NOT_FOUND).body(Map.of(
+                "error", "not_found",
+                "message", "请求的资源不存在"
         ));
     }
 
