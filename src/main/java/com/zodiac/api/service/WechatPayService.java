@@ -110,7 +110,7 @@ public class WechatPayService {
         }
 
         try {
-            Map<String, Object> resp = WebClient.builder()
+            String responseBody = WebClient.builder()
                     .baseUrl("https://api.weixin.qq.com")
                     .defaultHeader(HttpHeaders.USER_AGENT, USER_AGENT)
                     .build()
@@ -122,12 +122,13 @@ public class WechatPayService {
                             .queryParam("js_code", code)
                             .queryParam("grant_type", "authorization_code")
                             .build())
-                    .retrieve()
-                    .bodyToMono(new ParameterizedTypeReference<Map<String, Object>>() {})
+                    .exchangeToMono(response -> response.bodyToMono(String.class))
                     .block();
-            if (resp == null) {
+            if (responseBody == null || responseBody.isBlank()) {
                 throw new PaymentException("wechat_openid_empty", "微信 openid 获取失败", HttpStatus.BAD_GATEWAY);
             }
+            Map<String, Object> resp = objectMapper.readValue(responseBody,
+                    new TypeReference<Map<String, Object>>() {});
             String openid = asString(resp.get("openid"));
             if (!isBlank(openid)) {
                 return openid;
