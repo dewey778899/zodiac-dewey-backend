@@ -1,19 +1,8 @@
 package com.zodiac.api.controller;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.zodiac.api.dto.PaymentCreateOrderRequest;
-import com.zodiac.api.dto.WechatJsapiPrepareRequest;
-import com.zodiac.api.entity.PayOrder;
-import com.zodiac.api.exception.PaymentException;
-import com.zodiac.api.repository.PayOrderRepository;
-import com.zodiac.api.service.PaymentFacadeService;
-import com.zodiac.api.service.PaymentNotifyService;
-import com.zodiac.api.service.WechatPayService;
-import com.zodiac.api.util.IpUtil;
-import jakarta.servlet.http.HttpServletRequest;
-import jakarta.validation.Valid;
+import com.zodiac.api.service.PayService;
+import jakarta.validation.constraints.NotBlank;
 import lombok.RequiredArgsConstructor;
-import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
@@ -24,153 +13,141 @@ import java.util.Map;
 @RequiredArgsConstructor
 public class PayController {
 
-    private final PaymentFacadeService paymentFacadeService;
-    private final PaymentNotifyService paymentNotifyService;
-    private final WechatPayService wechatPayService;
-    private final PayOrderRepository payOrderRepository;
-    private final ObjectMapper objectMapper;
+    private final PayService payService;
+
+    /**
+     * 创建支付订单（走 PayJS）
+     * POST /api/pay/create
+     */
+    @PostMapping("/api/pay/create")
+    public ResponseEntity<?> createOrder() {
+        try {
+            Map<String, Object> result = payService.createOrder();
+            return ResponseEntity.ok(result);
+        } catch (RuntimeException e) {
+            return ResponseEntity.status(503).body(Map.of(
+                    "error", "pay_service_unavailable",
+                    "message", e.getMessage()
+            ));
+        }
+    }
+
+    /**
+     * 创建手动订单（不走 PayJS，用于静态收款码 + 后台确认模式）
+     * POST /api/pay/create-manual
+     */
+    @PostMapping("/api/pay/create-manual")
+    public ResponseEntity<?> createManualOrder() {
+        Map<String, Object> result = payService.createManualOrder();
+        return ResponseEntity.ok(result);
+    }
 
     @PostMapping("/api/pay/orders")
-    public ResponseEntity<?> createOrder(@Valid @RequestBody PaymentCreateOrderRequest request,
-                                         HttpServletRequest httpRequest) {
-        return ResponseEntity.ok(paymentFacadeService.createOrder(request, IpUtil.getClientIp(httpRequest)));
+    public ResponseEntity<?> createManagedOrder(@RequestBody PayOrderCreateRequest request) {
+        return ResponseEntity.ok(payService.createPaymentOrder(
+                request.getChannel(),
+                request.getScene(),
+                request.getReportType(),
+                request.getAmountFen(),
+                request.getSubject(),
+                request.getReturnUrl(),
+                request.getPhone()
+        ));
+    }
+
+    /**
+     * 查询支付状态 (前端轮询)
+     * GET /api/pay/status/{outTradeNo}
+     */
+    @GetMapping("/api/pay/status/{outTradeNo}")
+    public ResponseEntity<?> queryStatus(@PathVariable String outTradeNo) {
+        Map<String, Object> result = payService.queryStatus(outTradeNo);
+        return ResponseEntity.ok(result);
     }
 
     @GetMapping("/api/pay/orders/{outTradeNo}")
-    public ResponseEntity<?> getOrder(@PathVariable String outTradeNo) {
-        return ResponseEntity.ok(paymentFacadeService.getOrderStatus(outTradeNo));
+    public ResponseEntity<?> fetchOrder(@PathVariable String outTradeNo) {
+        return ResponseEntity.ok(payService.getOrderForClient(outTradeNo));
     }
 
-    @PostMapping("/api/pay/wechat/jsapi-prepare")
-    public ResponseEntity<?> prepareWechatJsapi(@Valid @RequestBody WechatJsapiPrepareRequest request,
-                                                HttpServletRequest httpRequest) {
-        return ResponseEntity.ok(paymentFacadeService.prepareWechatJsapi(request, IpUtil.getClientIp(httpRequest)));
-    }
-
-    @PostMapping("/api/pay/orders/{outTradeNo}/consume")
-    public ResponseEntity<?> consume(@PathVariable String outTradeNo) {
-        return ResponseEntity.ok(paymentFacadeService.consumeOrderToken(outTradeNo));
-    }
-
-    @PostMapping("/api/pay/notify/wechat")
-    public ResponseEntity<?> notifyWechat(@RequestBody(required = false) String rawBody,
-                                          @RequestParam Map<String, String> params,
-                                          @RequestHeader(value = "Wechatpay-Timestamp", required = false) String timestamp,
-                                          @RequestHeader(value = "Wechatpay-Nonce", required = false) String nonce,
-                                          @RequestHeader(value = "Wechatpay-Serial", required = false) String serial,
-                                          @RequestHeader(value = "Wechatpay-Signature", required = false) String signature) {
-        String raw = rawBody == null || rawBody.isBlank() ? safeJson(params) : rawBody;
-        boolean verified = !isBlank(signature)
-                ? wechatPayService.verifyCallback(timestamp, nonce, raw, serial, signature)
-                : Boolean.parseBoolean(params.getOrDefault("verified", "false"));
-        Map<String, Object> payload = verified && rawBody != null && !rawBody.isBlank()
-                ? wechatPayService.decryptCallbackResource(raw)
-                : new LinkedHashMap<>(params);
-
-        String outTradeNo = firstNonBlank(
-                getNestedString(payload, "resource", "out_trade_no"),
-                params.get("out_trade_no"),
-                params.get("outTradeNo")
-        );
-        String transactionId = firstNonBlank(
-                getNestedString(payload, "resource", "transaction_id"),
-                params.get("transaction_id"),
-                params.get("transactionId")
-        );
-        if (isBlank(outTradeNo)) {
-            paymentNotifyService.writeLog(null, PayOrder.CHANNEL_WECHAT, "PAYMENT", false, "IGNORED", "missing out_trade_no", raw);
-            return ResponseEntity.badRequest().body(Map.of("code", "FAIL", "message", "missing out_trade_no"));
-        }
-        paymentNotifyService.handlePaidNotification(PayOrder.CHANNEL_WECHAT, outTradeNo, raw, verified, transactionId);
-        return ResponseEntity.ok(Map.of("code", "SUCCESS", "message", "成功"));
-    }
-
-    @PostMapping("/api/pay/notify/alipay")
-    public String notifyAlipay(@RequestParam Map<String, String> params,
-                               @RequestBody(required = false) String rawBody) {
-        String outTradeNo = firstNonBlank(params.get("out_trade_no"), params.get("outTradeNo"));
-        String transactionId = firstNonBlank(params.get("trade_no"), params.get("tradeNo"));
-        String raw = rawBody == null || rawBody.isBlank() ? safeJson(params) : rawBody;
-        boolean verified = Boolean.parseBoolean(params.getOrDefault("verified", "false"));
-        if (isBlank(outTradeNo)) {
-            paymentNotifyService.writeLog(null, PayOrder.CHANNEL_ALIPAY, "PAYMENT", false, "IGNORED", "missing out_trade_no", raw);
-            return "fail";
-        }
-        paymentNotifyService.handlePaidNotification(PayOrder.CHANNEL_ALIPAY, outTradeNo, raw, verified, transactionId);
-        return verified ? "success" : "fail";
-    }
-
-    @Deprecated
-    @PostMapping("/api/pay/create-manual")
-    public ResponseEntity<?> createManualOrder() {
-        return ResponseEntity.status(HttpStatus.GONE).body(Map.of(
-                "error", "manual_payment_deprecated",
-                "message", "静态收款码手动确认已废弃，请使用 /api/pay/orders"
-        ));
-    }
-
-    @Deprecated
+    /**
+     * 手动确认支付（静态收款码模式）
+     * POST /api/pay/manual-confirm/{outTradeNo}
+     */
     @PostMapping("/api/pay/manual-confirm/{outTradeNo}")
     public ResponseEntity<?> manualConfirm(@PathVariable String outTradeNo) {
-        return ResponseEntity.status(HttpStatus.GONE).body(Map.of(
-                "error", "manual_payment_deprecated",
-                "message", "手动确认已迁移到后台 /api/admin/orders/{outTradeNo}/repair-paid"
-        ));
-    }
-
-    @Deprecated
-    @GetMapping("/api/pay/status/{outTradeNo}")
-    public ResponseEntity<?> legacyStatus(@PathVariable String outTradeNo) {
-        return getOrder(outTradeNo);
-    }
-
-    @GetMapping("/api/pay/token/check")
-    public ResponseEntity<?> checkToken(@RequestParam String token) {
-        return ResponseEntity.ok(Map.of("valid", paymentFacadeService.isTokenValid(token)));
+        Map<String, Object> result = payService.manualConfirm(outTradeNo);
+        return ResponseEntity.ok(result);
     }
 
     @PostMapping("/api/pay/dev/mark-paid/{outTradeNo}")
     public ResponseEntity<?> devMarkPaid(@PathVariable String outTradeNo) {
-        PayOrder order = payOrderRepository.findByOutTradeNo(outTradeNo)
-                .orElseThrow(() -> new PaymentException("order_not_found", "订单不存在", HttpStatus.NOT_FOUND));
-        paymentFacadeService.repairPaid(outTradeNo, order.getChannel(), "DEV_MARK_PAID", "DEV_MARK_PAID");
-        return ResponseEntity.ok(paymentFacadeService.getOrderStatus(outTradeNo));
+        payService.manualConfirm(outTradeNo);
+        return ResponseEntity.ok(payService.getOrderForClient(outTradeNo));
     }
 
-    private String safeJson(Map<String, String> params) {
-        try {
-            return objectMapper.writeValueAsString(new LinkedHashMap<>(params));
-        } catch (Exception e) {
-            return String.valueOf(params);
-        }
+    @PostMapping("/api/pay/wechat/jsapi-prepare")
+    public ResponseEntity<?> prepareWechatJsapi(@RequestBody PayOrderCreateRequest request) {
+        PayOrderCreateRequest normalized = new PayOrderCreateRequest();
+        normalized.setChannel("wechat");
+        normalized.setScene(request.getScene() == null ? "wechat_jsapi" : request.getScene());
+        normalized.setReportType(request.getReportType());
+        normalized.setAmountFen(request.getAmountFen());
+        normalized.setSubject(request.getSubject());
+        normalized.setReturnUrl(request.getReturnUrl());
+        normalized.setPhone(request.getPhone());
+        return ResponseEntity.ok(payService.createPaymentOrder(
+                normalized.getChannel(),
+                normalized.getScene(),
+                normalized.getReportType(),
+                normalized.getAmountFen(),
+                normalized.getSubject(),
+                normalized.getReturnUrl(),
+                normalized.getPhone()
+        ));
     }
 
-    private String firstNonBlank(String... values) {
-        if (values == null) {
-            return null;
-        }
-        for (String value : values) {
-            if (value != null && !value.isBlank()) {
-                return value;
-            }
-        }
-        return null;
+    /**
+     * PayJS 异步回调 (服务端到服务端, 不需要 CORS)
+     * POST /api/pay/notify
+     */
+    @PostMapping("/api/pay/notify")
+    public String notify(@RequestParam Map<String, String> params) {
+        return payService.handleNotify(params);
     }
 
-    @SuppressWarnings("unchecked")
-    private String getNestedString(Map<String, Object> payload, String parentKey, String childKey) {
-        if (payload == null) {
-            return null;
-        }
-        Object parent = payload.get(parentKey);
-        if (!(parent instanceof Map<?, ?> nested)) {
-            return null;
-        }
-        Object value = ((Map<String, Object>) nested).get(childKey);
-        return value == null ? null : String.valueOf(value);
+    /**
+     * 校验 accessToken 是否有效（不消耗），前端预检用
+     * GET /api/pay/token/check?token=xxx
+     */
+    @GetMapping("/api/pay/token/check")
+    public ResponseEntity<?> checkToken(@RequestParam String token) {
+        boolean valid = payService.isTokenValid(token);
+        return ResponseEntity.ok(Map.of("valid", valid));
     }
 
-    private boolean isBlank(String value) {
-        return value == null || value.isBlank();
+    public static class PayOrderCreateRequest {
+        private String channel;
+        private String scene;
+        private String reportType;
+        private Integer amountFen;
+        private String subject;
+        private String returnUrl;
+        private String phone;
+
+        public String getChannel() { return channel; }
+        public void setChannel(String channel) { this.channel = channel; }
+        public String getScene() { return scene; }
+        public void setScene(String scene) { this.scene = scene; }
+        public String getReportType() { return reportType; }
+        public void setReportType(String reportType) { this.reportType = reportType; }
+        public Integer getAmountFen() { return amountFen; }
+        public void setAmountFen(Integer amountFen) { this.amountFen = amountFen; }
+        public String getSubject() { return subject; }
+        public void setSubject(String subject) { this.subject = subject; }
+        public String getReturnUrl() { return returnUrl; }
+        public void setReturnUrl(String returnUrl) { this.returnUrl = returnUrl; }
+        public String getPhone() { return phone; }
+        public void setPhone(String phone) { this.phone = phone; }
     }
 }

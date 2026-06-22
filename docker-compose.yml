@@ -11,17 +11,7 @@
 # 后续 GitHub Actions 会自动部署, 无需手动操作
 # ==========================================
 
-# Deploy trigger: 2026-06-07T20:43:05+08:00
 services:
-  frontend:
-    image: registry.cn-shanghai.aliyuncs.com/dewey_zodiac/zodiac-dewey-frontend:latest
-    container_name: zodiac-frontend
-    ports:
-      - "80:80"
-    depends_on:
-      - backend
-    restart: unless-stopped
-
   backend:
     image: registry.cn-shanghai.aliyuncs.com/dewey_zodiac/zodiac-dewey-backend:latest
     container_name: zodiac-backend
@@ -29,27 +19,9 @@ services:
       - "8080:8080"
     volumes:
       - ./data:/app/data
-      - ./certs:/app/certs:ro
     environment:
       - DEEPSEEK_API_KEY=${DEEPSEEK_API_KEY}
       - CLAUDE_API_KEY=${CLAUDE_API_KEY}
       - ADMIN_PASSWORD=${ADMIN_PASSWORD}
-      - DB_URL=jdbc:sqlite:/app/data/zodiac_dewey.db
-      - DB_DRIVER=org.sqlite.JDBC
-      - HIBERNATE_DIALECT=org.hibernate.community.dialect.SQLiteDialect
-      - PAY_AMOUNT_FEN=${PAY_AMOUNT_FEN}
-      - PAY_DEV_MOCK_ENABLED=${PAY_DEV_MOCK_ENABLED}
-      - WECHAT_PAY_ENABLED=${WECHAT_PAY_ENABLED}
-      - WECHAT_PAY_MCH_ID=${WECHAT_PAY_MCH_ID}
-      - WECHAT_PAY_APP_ID=${WECHAT_PAY_APP_ID}
-      - WECHAT_PAY_APP_SECRET=${WECHAT_PAY_APP_SECRET}
-      - WECHAT_PAY_API_V3_KEY=${WECHAT_PAY_API_V3_KEY}
-      - WECHAT_PAY_MCH_SERIAL_NO=${WECHAT_PAY_MCH_SERIAL_NO}
-      - WECHAT_PAY_PRIVATE_KEY_PATH=${WECHAT_PAY_PRIVATE_KEY_PATH}
-      - WECHAT_PAY_CLIENT_CERT_PATH=${WECHAT_PAY_CLIENT_CERT_PATH}
-      - WECHAT_PAY_PLATFORM_CERT_PATH=${WECHAT_PAY_PLATFORM_CERT_PATH}
-      - WECHAT_PAY_NOTIFY_URL=${WECHAT_PAY_NOTIFY_URL}
-      - WECHAT_PAY_H5_RETURN_URL=${WECHAT_PAY_H5_RETURN_URL}
-      - WECHAT_OAUTH_REDIRECT_URL=${WECHAT_OAUTH_REDIRECT_URL}
       - TZ=Asia/Shanghai
     restart: unless-stopped

@@ -3,7 +3,6 @@ package com.zodiac.api.entity;
 import jakarta.persistence.*;
 import lombok.Data;
 import org.hibernate.annotations.CreationTimestamp;
-import org.hibernate.annotations.UpdateTimestamp;
 
 import java.time.LocalDateTime;
 
@@ -12,166 +11,71 @@ import java.time.LocalDateTime;
 @Table(name = "pay_order", indexes = {
         @Index(name = "idx_pay_out_trade_no", columnList = "out_trade_no", unique = true),
         @Index(name = "idx_pay_created_at", columnList = "created_at"),
-        @Index(name = "idx_pay_access_token", columnList = "access_token"),
-        @Index(name = "idx_pay_status", columnList = "status"),
-        @Index(name = "idx_pay_channel", columnList = "channel"),
-        @Index(name = "idx_pay_device_token", columnList = "device_token"),
-        @Index(name = "idx_pay_report_uid", columnList = "report_uid")
+        @Index(name = "idx_pay_access_token", columnList = "access_token")
 })
 public class PayOrder {
 
     public static final String STATUS_CREATED = "CREATED";
-    public static final String STATUS_PAYING = "PAYING";
     public static final String STATUS_PAID = "PAID";
-    public static final String STATUS_FAILED = "FAILED";
-    public static final String STATUS_CLOSED = "CLOSED";
-    public static final String STATUS_REFUND_PENDING = "REFUND_PENDING";
-    public static final String STATUS_REFUNDED = "REFUNDED";
-
-    public static final String UNLOCK_STATUS_LOCKED = "LOCKED";
-    public static final String UNLOCK_STATUS_UNLOCKED = "UNLOCKED";
-    public static final String UNLOCK_STATUS_CONSUMED = "CONSUMED";
-    public static final String UNLOCK_STATUS_EXPIRED = "EXPIRED";
-
-    public static final String UNLOCK_SOURCE_PAYMENT_AUTO = "PAYMENT_AUTO";
-    public static final String UNLOCK_SOURCE_ADMIN_APPROVED = "ADMIN_APPROVED";
-    public static final String UNLOCK_SOURCE_ADMIN_REPAIRED = "ADMIN_REPAIRED";
-    public static final String UNLOCK_SOURCE_DOUYIN_FOLLOW = "DOUYIN_FOLLOW";
-
-    public static final String CHANNEL_WECHAT = "WECHAT";
-    public static final String CHANNEL_ALIPAY = "ALIPAY";
-    public static final String CHANNEL_DOUYIN = "DOUYIN";
-
-    public static final String TRADE_TYPE_JSAPI = "JSAPI";
-    public static final String TRADE_TYPE_H5 = "H5";
-    public static final String TRADE_TYPE_NATIVE = "NATIVE";
-    public static final String TRADE_TYPE_WAP = "WAP";
-
+    /** token 有效期（小时） */
     public static final int TOKEN_EXPIRE_HOURS = 24;
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    @Column(name = "out_trade_no", length = 64, nullable = false, unique = true)
+    @Column(name = "out_trade_no", length = 50, nullable = false, unique = true)
     private String outTradeNo;
+
+    @Column(name = "payjs_order_id", length = 50)
+    private String payjsOrderId;
+
+    @Column(name = "total_fee")
+    private Integer totalFee;
+
+    @Column(name = "status", length = 20, nullable = false)
+    private String status = STATUS_CREATED;
+
+    @Column(name = "openid", length = 64)
+    private String openid;
+
+    @Column(name = "phone", length = 20)
+    private String phone;
 
     @Column(name = "channel", length = 20)
     private String channel;
 
-    @Column(name = "trade_type", length = 20)
-    private String tradeType;
+    @Column(name = "scene", length = 50)
+    private String scene;
 
-    @Column(name = "status", length = 30, nullable = false)
-    private String status = STATUS_CREATED;
+    @Column(name = "report_type", length = 20)
+    private String reportType;
 
-    @Column(name = "subject", length = 255)
+    @Column(name = "subject", length = 100)
     private String subject;
 
-    @Column(name = "amount_fen")
-    private Integer amountFen;
+    @Column(name = "return_url", length = 500)
+    private String returnUrl;
 
-    @Column(name = "client_ip", length = 64)
-    private String clientIp;
-
-    @Column(name = "openid", length = 128)
-    private String openid;
-
-    @Column(name = "wechat_prepay_id", length = 128)
-    private String wechatPrepayId;
-
-    @Column(name = "wechat_mweb_url", length = 1000)
-    private String wechatMwebUrl;
-
-    @Column(name = "wechat_code_url", length = 1000)
-    private String wechatCodeUrl;
-
-    @Column(name = "wechat_transaction_id", length = 128)
-    private String wechatTransactionId;
-
-    @Column(name = "alipay_trade_no", length = 128)
-    private String alipayTradeNo;
-
-    @Column(name = "alipay_form_html", columnDefinition = "TEXT")
-    private String alipayFormHtml;
-
-    @Column(name = "notify_raw", columnDefinition = "TEXT")
-    private String notifyRaw;
-
-    @Column(name = "notify_verified")
-    private Boolean notifyVerified;
-
-    @Column(name = "notify_channel", length = 20)
-    private String notifyChannel;
+    @Column(name = "transaction_id", length = 64)
+    private String transactionId;
 
     @Column(name = "paid_at")
     private LocalDateTime paidAt;
 
-    @Column(name = "closed_at")
-    private LocalDateTime closedAt;
-
-    @Column(name = "expires_at")
-    private LocalDateTime expiresAt;
-
-    @Column(name = "fail_reason", length = 1000)
-    private String failReason;
-
-    @Column(name = "report_type", length = 30)
-    private String reportType;
-
-    @Column(name = "report_uid", length = 64)
-    private String reportUid;
-
-    @Column(name = "device_token", length = 128)
-    private String deviceToken;
-
-    @Column(name = "referral_user_id")
-    private Long referralUserId;
-
-    @Column(name = "referral_settled")
-    private Boolean referralSettled;
-
-    @Column(name = "scene_code", length = 30)
-    private String sceneCode;
-
-    @Column(name = "wechat_auth_code", length = 256)
-    private String wechatAuthCode;
-
-    @Column(name = "return_url", length = 1000)
-    private String returnUrl;
-
-    @Column(name = "attach_payload", columnDefinition = "TEXT")
-    private String attachPayload;
-
+    /**
+     * 支付成功后生成的一次性访问 Token。
+     * 前端凭此 token 调用 /api/compatibility (claude 版) 而无需再走支付。
+     * 有效期 TOKEN_EXPIRE_HOURS 小时，使用后即消耗（tokenConsumedAt 非 null）。
+     */
     @Column(name = "access_token", length = 64, unique = true)
     private String accessToken;
 
+    /** token 被消耗的时间（非 null 表示已使用） */
     @Column(name = "token_consumed_at")
     private LocalDateTime tokenConsumedAt;
-
-    @Column(name = "unlock_status", length = 32, nullable = false)
-    private String unlockStatus = UNLOCK_STATUS_LOCKED;
-
-    @Column(name = "unlock_source", length = 64)
-    private String unlockSource;
-
-    @Column(name = "unlock_granted_at")
-    private LocalDateTime unlockGrantedAt;
-
-    @Column(name = "unlock_granted_by", length = 128)
-    private String unlockGrantedBy;
-
-    @Column(name = "unlock_remark", length = 1000)
-    private String unlockRemark;
-
-    @Column(name = "last_status_sync_at")
-    private LocalDateTime lastStatusSyncAt;
 
     @CreationTimestamp
     @Column(name = "created_at", nullable = false, updatable = false)
     private LocalDateTime createdAt;
-
-    @UpdateTimestamp
-    @Column(name = "updated_at")
-    private LocalDateTime updatedAt;
 }

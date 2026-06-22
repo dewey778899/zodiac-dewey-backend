@@ -10,15 +10,16 @@ import java.time.LocalDateTime;
 @Data
 @Entity
 @Table(name = "referral_withdrawal", indexes = {
-        @Index(name = "idx_ref_withdraw_user", columnList = "user_id"),
-        @Index(name = "idx_ref_withdraw_status", columnList = "status")
+        @Index(name = "idx_referral_withdrawal_user", columnList = "user_id"),
+        @Index(name = "idx_referral_withdrawal_status", columnList = "status"),
+        @Index(name = "idx_referral_withdrawal_created_at", columnList = "created_at")
 })
 public class ReferralWithdrawal {
 
     public static final String STATUS_APPLIED = "APPLIED";
-    public static final String STATUS_APPROVED = "APPROVED";
     public static final String STATUS_REJECTED = "REJECTED";
-    public static final String STATUS_PAID = "PAID";
+    public static final String STATUS_SUCCESS = "SUCCESS";
+    public static final String STATUS_WITHDRAWN = "WITHDRAWN";
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
@@ -33,13 +34,13 @@ public class ReferralWithdrawal {
     @Column(name = "status", length = 32, nullable = false)
     private String status = STATUS_APPLIED;
 
-    @Column(name = "payee_account_snapshot", columnDefinition = "TEXT")
-    private String payeeAccountSnapshot;
-
     @Column(name = "withdraw_platform", length = 32)
     private String withdrawPlatform;
 
-    @Column(name = "remark", length = 1000)
+    @Column(name = "payee_account_snapshot", length = 255)
+    private String payeeAccountSnapshot;
+
+    @Column(name = "remark", length = 255)
     private String remark;
 
     @CreationTimestamp
@@ -47,6 +48,6 @@ public class ReferralWithdrawal {
     private LocalDateTime createdAt;
 
     @UpdateTimestamp
-    @Column(name = "updated_at")
+    @Column(name = "updated_at", nullable = false)
     private LocalDateTime updatedAt;
 }

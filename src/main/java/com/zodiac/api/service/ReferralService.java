@@ -1,25 +1,21 @@
 package com.zodiac.api.service;
 
-import com.zodiac.api.dto.ReferralBindRequest;
-import com.zodiac.api.dto.ReferralVisitRequest;
-import com.zodiac.api.dto.ReferralWithdrawRequest;
-import com.zodiac.api.dto.WechatPhoneBindRequest;
 import com.zodiac.api.entity.PayOrder;
 import com.zodiac.api.entity.ReferralBinding;
 import com.zodiac.api.entity.ReferralReward;
 import com.zodiac.api.entity.ReferralUser;
 import com.zodiac.api.entity.ReferralWithdrawal;
-import com.zodiac.api.exception.PaymentException;
+import com.zodiac.api.repository.PayOrderRepository;
 import com.zodiac.api.repository.ReferralBindingRepository;
 import com.zodiac.api.repository.ReferralRewardRepository;
 import com.zodiac.api.repository.ReferralUserRepository;
 import com.zodiac.api.repository.ReferralWithdrawalRepository;
+import jakarta.transaction.Transactional;
 import lombok.RequiredArgsConstructor;
-import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
 
 import java.security.SecureRandom;
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -29,524 +25,515 @@ import java.util.Optional;
 @RequiredArgsConstructor
 public class ReferralService {
 
-    private static final int REWARD_PERCENT = 30;
-    private static final String CODE_CHARS = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
     private static final SecureRandom RNG = new SecureRandom();
-    private static final String PLATFORM_WECHAT = "WECHAT";
-    private static final String PLATFORM_DOUYIN = "DOUYIN";
+    private static final String INVITE_CHARS = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+    private static final int DEFAULT_AUTO_REWARD_FEN = 100;
+    private static final String AUTO_REWARD_REMARK = "auto-payment-settlement";
 
     private final ReferralUserRepository referralUserRepository;
     private final ReferralBindingRepository referralBindingRepository;
     private final ReferralRewardRepository referralRewardRepository;
     private final ReferralWithdrawalRepository referralWithdrawalRepository;
+    private final PayOrderRepository payOrderRepository;
 
     @Transactional
-    public Map<String, Object> bindUser(ReferralBindRequest request) {
-        String phone = normalizePhone(request.getPhone());
-        String platform = normalizePlatform(request.getPlatform());
-        String openid = trimToNull(request.getOpenid());
+    public Map<String, Object> recordVisit(String inviteCode, String source) {
+        Map<String, Object> resp = new LinkedHashMap<>();
+        resp.put("status", "ok");
+        resp.put("inviteCode", normalizeInviteCode(inviteCode));
+        resp.put("source", trim(source, 64));
+        return resp;
+    }
 
-        ReferralUser user = referralUserRepository.findByPhone(phone).orElseGet(ReferralUser::new);
-        if (user.getId() == null) {
-            user.setPhone(phone);
-            user.setInviteCode(generateInviteCode());
+    @Transactional
+    public Map<String, Object> bindUser(String phone,
+                                        String inviteCode,
+                                        String platform,
+                                        String openid,
+                                        String displayName,
+                                        String source) {
+        String normalizedPhone = normalizePhone(phone);
+        ReferralUser user = referralUserRepository.findByPhone(normalizedPhone)
+                .orElseGet(() -> {
+                    ReferralUser created = new ReferralUser();
+                    created.setPhone(normalizedPhone);
+                    created.setInviteCode(generateInviteCode());
+                    return created;
+                });
+
+        user.setDisplayName(trim(displayName, 64));
+        user.setLastBindSource(trim(source, 64));
+        if ("WECHAT".equalsIgnoreCase(platform) && openid != null && !openid.isBlank()) {
+            user.setWechatOpenid(trim(openid, 128));
+        }
+        user = referralUserRepository.save(user);
+
+        if (inviteCode != null && !inviteCode.isBlank()) {
+            Optional<ReferralUser> inviter = referralUserRepository.findByInviteCode(normalizeInviteCode(inviteCode));
+            if (inviter.isPresent() && !inviter.get().getId().equals(user.getId())) {
+                ReferralBinding binding = referralBindingRepository.findByInviteeUserId(user.getId())
+                        .orElseGet(ReferralBinding::new);
+                binding.setInviteeUserId(user.getId());
+                binding.setInviterUserId(inviter.get().getId());
+                binding.setInviteCode(inviter.get().getInviteCode());
+                binding.setBindSource(trim(source, 64));
+                referralBindingRepository.save(binding);
+            }
         }
 
-        if (PLATFORM_WECHAT.equals(platform)) {
-            user.setWechatOpenid(openid);
-            user.setUnionid(trimToNull(request.getUnionid()));
-        } else if (PLATFORM_DOUYIN.equals(platform)) {
-            user.setDouyinOpenid(openid);
-        }
-
-        user.setDisplayName(trimToNull(request.getDisplayName()));
-        user.setDeviceToken(trimToNull(request.getDeviceToken()));
-        user.setSource(trimToNull(request.getSource()));
-        referralUserRepository.save(user);
-
-        bindInviterIfNeeded(user, trimToNull(request.getInviteCode()), trimToNull(request.getSource()));
-        return toProfile(user);
+        return toReferralProfile(user);
     }
 
     @Transactional
-    public Map<String, Object> bindWechatPhoneUser(WechatPhoneBindRequest request) {
-        String openid = "wechat-openid-" + Math.abs(request.getLoginCode().hashCode());
-        String phone = resolveWechatPhone(request);
-
-        ReferralBindRequest bindRequest = new ReferralBindRequest();
-        bindRequest.setPhone(phone);
-        bindRequest.setInviteCode(trimToNull(request.getInviteCode()));
-        bindRequest.setOpenid(openid);
-        bindRequest.setPlatform(PLATFORM_WECHAT);
-        bindRequest.setDeviceToken(trimToNull(request.getDeviceToken()));
-        bindRequest.setSource(trimToNull(request.getSource()) == null ? "miniapp-wechat-phone" : request.getSource().trim());
-        bindRequest.setDisplayName(trimToNull(request.getDisplayName()));
-        return bindUser(bindRequest);
+    public Map<String, Object> bindWechatPhone(String phone, String openid, String inviteCode, String source) {
+        return bindUser(phone, inviteCode, "WECHAT", openid, phone, source);
     }
 
-    @Transactional
-    public Map<String, Object> recordVisit(ReferralVisitRequest request) {
-        return Map.of(
-                "status", "ok",
-                "inviteCode", request.getInviteCode(),
-                "deviceToken", trimToNull(request.getDeviceToken()),
-                "source", trimToNull(request.getSource())
-        );
+    public Map<String, Object> getProfile(String phone, String openid) {
+        return toReferralProfile(findUser(phone, openid));
     }
 
-    @Transactional(readOnly = true)
-    public Map<String, Object> getProfile(String phone) {
-        return toProfile(requireUser(phone));
-    }
-
-    @Transactional(readOnly = true)
     public Map<String, Object> getSummary(String phone) {
-        ReferralUser user = requireUser(phone);
-        long inviteCount = referralBindingRepository.countByInviterUserId(user.getId());
-        long rewardCount = referralRewardRepository.countByInviterUserId(user.getId());
-        Map<String, Object> data = new LinkedHashMap<>();
-        data.putAll(toProfile(user));
-        data.put("inviteCount", inviteCount);
-        data.put("rewardCount", rewardCount);
-        return data;
+        ReferralUser user = referralUserRepository.findByPhone(normalizePhone(phone))
+                .orElseThrow(() -> new IllegalArgumentException("referral user not found"));
+        Map<String, Object> summary = toReferralProfile(user);
+        summary.put("inviteCount", referralBindingRepository.countByInviterUserId(user.getId()));
+        summary.put("rewardCount", referralRewardRepository.countByInviterUserId(user.getId()));
+        return summary;
     }
 
-    @Transactional(readOnly = true)
     public Map<String, Object> getRecords(String phone) {
-        ReferralUser user = requireUser(phone);
-        List<Map<String, Object>> rewards = referralRewardRepository.findByInviterUserIdOrderBySettledAtDesc(user.getId())
-                .stream()
-                .map(this::toRewardMap)
-                .toList();
-        List<Map<String, Object>> bindings = referralBindingRepository.findByInviterUserIdOrderByBoundAtDesc(user.getId())
-                .stream()
-                .map(this::toBindingMap)
-                .toList();
-        List<Map<String, Object>> withdrawals = referralWithdrawalRepository.findByUserIdOrderByCreatedAtDesc(user.getId())
-                .stream()
-                .map(this::toWithdrawalMap)
-                .toList();
-        return Map.of(
-                "rewards", rewards,
-                "bindings", bindings,
-                "withdrawals", withdrawals
-        );
+        ReferralUser user = referralUserRepository.findByPhone(normalizePhone(phone))
+                .orElseThrow(() -> new IllegalArgumentException("referral user not found"));
+        Map<String, Object> resp = new LinkedHashMap<>();
+        resp.put("rewards", mapRewards(referralRewardRepository.findByInviterUserIdOrderBySettledAtDesc(user.getId())));
+        resp.put("bindings", mapBindings(referralBindingRepository.findAllByOrderByBoundAtDesc(), user.getId()));
+        resp.put("withdrawals", mapWithdrawals(referralWithdrawalRepository.findByUserIdOrderByCreatedAtDesc(user.getId())));
+        return resp;
     }
 
     @Transactional
-    public Map<String, Object> applyWithdrawal(ReferralWithdrawRequest request) {
-        ReferralUser user = requireUser(request.getPhone());
-        int amountFen = request.getAmountFen() == null ? 0 : request.getAmountFen();
-        if (amountFen <= 0) {
-            throw new PaymentException("withdraw_amount_invalid", "提现金额必须大于 0", HttpStatus.BAD_REQUEST);
+    public Map<String, Object> createWithdrawal(String phone,
+                                                Integer amountFen,
+                                                String withdrawPlatform,
+                                                String payeeAccountSnapshot,
+                                                String remark) {
+        ReferralUser user = referralUserRepository.findByPhone(normalizePhone(phone))
+                .orElseThrow(() -> new IllegalArgumentException("referral user not found"));
+        if (amountFen == null || amountFen <= 0) {
+            throw new IllegalArgumentException("withdraw amount must be greater than 0");
         }
-        if (nullSafe(user.getWithdrawableFen()) < amountFen) {
-            throw new PaymentException("withdraw_amount_invalid", "提现金额超过可提现余额", HttpStatus.BAD_REQUEST);
+        if (user.getWithdrawableFen() == null || user.getWithdrawableFen() < amountFen) {
+            throw new IllegalArgumentException("insufficient withdrawable balance");
         }
+
+        user.setWithdrawableFen(user.getWithdrawableFen() - amountFen);
+        user.setFrozenFen(defaultZero(user.getFrozenFen()) + amountFen);
+        referralUserRepository.save(user);
 
         ReferralWithdrawal withdrawal = new ReferralWithdrawal();
         withdrawal.setUserId(user.getId());
         withdrawal.setAmountFen(amountFen);
-        withdrawal.setStatus(ReferralWithdrawal.STATUS_APPLIED);
-        withdrawal.setWithdrawPlatform(normalizePlatform(request.getWithdrawPlatform()));
-        withdrawal.setPayeeAccountSnapshot(resolveWithdrawAccount(user, request.getWithdrawPlatform()));
-        withdrawal.setRemark("等待人工审核后打款");
+        withdrawal.setWithdrawPlatform(normalizePlatform(withdrawPlatform));
+        withdrawal.setPayeeAccountSnapshot(trim(payeeAccountSnapshot, 255));
+        withdrawal.setRemark(trim(remark, 255));
         referralWithdrawalRepository.save(withdrawal);
 
-        user.setWithdrawableFen(nullSafe(user.getWithdrawableFen()) - amountFen);
-        user.setFrozenFen(nullSafe(user.getFrozenFen()) + amountFen);
-        referralUserRepository.save(user);
+        Map<String, Object> resp = new LinkedHashMap<>();
+        resp.put("status", "ok");
+        resp.put("withdrawalId", withdrawal.getId());
+        resp.put("withdrawalStatus", withdrawal.getStatus());
+        resp.put("reviewMode", "MANUAL_REVIEW");
+        resp.put("payoutMode", "MANUAL_PAYOUT");
+        resp.put("withdrawPlatform", withdrawal.getWithdrawPlatform());
+        return resp;
+    }
 
-        int remaining = amountFen;
-        for (ReferralReward reward : referralRewardRepository.findByInviterUserIdOrderBySettledAtDesc(user.getId())) {
-            if (remaining <= 0) break;
-            if (!ReferralReward.STATUS_AVAILABLE.equals(reward.getStatus())) continue;
-            reward.setStatus(ReferralReward.STATUS_WITHDRAW_APPLIED);
-            reward.setWithdrawalId(withdrawal.getId());
-            referralRewardRepository.save(reward);
-            remaining -= nullSafe(reward.getAmountFen());
+    public Map<String, Object> getOverview() {
+        Map<String, Object> resp = new LinkedHashMap<>();
+        resp.put("users", referralUserRepository.count());
+        resp.put("bindings", referralBindingRepository.count());
+        resp.put("withdrawals", referralWithdrawalRepository.countByStatus(ReferralWithdrawal.STATUS_APPLIED));
+        return resp;
+    }
+
+    public List<Map<String, Object>> getUsers() {
+        List<Map<String, Object>> list = new ArrayList<>();
+        for (ReferralUser user : referralUserRepository.findAllByOrderByCreatedAtDesc()) {
+            list.add(toReferralProfile(user));
         }
+        return list;
+    }
 
-        return Map.of(
-                "status", "ok",
-                "withdrawalId", withdrawal.getId()
-        );
+    public List<Map<String, Object>> getBindings() {
+        return mapBindings(referralBindingRepository.findAllByOrderByBoundAtDesc(), null);
+    }
+
+    public List<Map<String, Object>> getRewards() {
+        return mapRewards(referralRewardRepository.findAllByOrderBySettledAtDesc());
+    }
+
+    public List<Map<String, Object>> getWithdrawals() {
+        return mapWithdrawals(referralWithdrawalRepository.findAllByOrderByCreatedAtDesc());
     }
 
     @Transactional
-    public void settleRewardForPaidOrder(PayOrder order) {
-        if (order == null || order.getId() == null || order.getReferralUserId() == null) {
-            return;
+    public void rebind(Long inviteeUserId, Long inviterUserId, String source) {
+        if (inviteeUserId == null || inviterUserId == null) {
+            throw new IllegalArgumentException("inviteeUserId and inviterUserId are required");
         }
-        if (Boolean.TRUE.equals(order.getReferralSettled())) {
-            return;
+        ReferralUser inviter = referralUserRepository.findById(inviterUserId)
+                .orElseThrow(() -> new IllegalArgumentException("inviter not found"));
+        referralUserRepository.findById(inviteeUserId)
+                .orElseThrow(() -> new IllegalArgumentException("invitee not found"));
+
+        ReferralBinding binding = referralBindingRepository.findByInviteeUserId(inviteeUserId)
+                .orElseGet(ReferralBinding::new);
+        binding.setInviteeUserId(inviteeUserId);
+        binding.setInviterUserId(inviter.getId());
+        binding.setInviteCode(inviter.getInviteCode());
+        binding.setBindSource(trim(source, 64));
+        referralBindingRepository.save(binding);
+    }
+
+    @Transactional
+    public void issueReward(Long payOrderId, Long inviterUserId, Long inviteeUserId, Integer amountFen, String remark) {
+        if (payOrderId == null || inviterUserId == null) {
+            throw new IllegalArgumentException("payOrderId and inviterUserId are required");
         }
-        if (referralRewardRepository.findByPayOrderId(order.getId()).isPresent()) {
-            order.setReferralSettled(true);
+        if (amountFen == null || amountFen <= 0) {
+            throw new IllegalArgumentException("reward amount must be greater than 0");
+        }
+
+        referralUserRepository.findById(inviterUserId)
+                .orElseThrow(() -> new IllegalArgumentException("inviter not found"));
+        PayOrder payOrder = payOrderRepository.findById(payOrderId)
+                .orElseThrow(() -> new IllegalArgumentException("pay order not found"));
+        if (referralRewardRepository.existsByPayOrderId(payOrder.getId())) {
+            throw new IllegalArgumentException("reward already exists for this pay order");
+        }
+
+        ReferralReward reward = new ReferralReward();
+        reward.setPayOrderId(payOrder.getId());
+        reward.setInviterUserId(inviterUserId);
+        Long resolvedInviteeUserId = inviteeUserId;
+        if (resolvedInviteeUserId == null && payOrder.getPhone() != null && !payOrder.getPhone().isBlank()) {
+            resolvedInviteeUserId = referralUserRepository.findByPhone(normalizePhone(payOrder.getPhone()))
+                    .map(ReferralUser::getId)
+                    .orElse(null);
+        }
+        if (resolvedInviteeUserId == null) {
+            throw new IllegalArgumentException("invitee user is required for manual reward issue");
+        }
+        referralUserRepository.findById(resolvedInviteeUserId)
+                .orElseThrow(() -> new IllegalArgumentException("invitee not found"));
+        reward.setInviteeUserId(resolvedInviteeUserId);
+        reward.setAmountFen(amountFen);
+        reward.setRemark(trim(remark, 255));
+        referralRewardRepository.save(reward);
+        applyRewardToUser(inviterUserId, amountFen, true);
+    }
+
+    @Transactional
+    public void cancelReward(Long rewardId, String remark) {
+        ReferralReward reward = referralRewardRepository.findById(rewardId)
+                .orElseThrow(() -> new IllegalArgumentException("reward not found"));
+        if (!ReferralReward.STATUS_AVAILABLE.equals(reward.getStatus())) {
+            throw new IllegalArgumentException("reward cannot be canceled in current status");
+        }
+        reward.setStatus(ReferralReward.STATUS_CANCELED);
+        reward.setRemark(trim(remark, 255));
+        referralRewardRepository.save(reward);
+        applyRewardToUser(reward.getInviterUserId(), reward.getAmountFen(), false);
+    }
+
+    @Transactional
+    public void approveWithdrawal(Long withdrawalId, String remark) {
+        ReferralWithdrawal withdrawal = referralWithdrawalRepository.findById(withdrawalId)
+                .orElseThrow(() -> new IllegalArgumentException("withdrawal not found"));
+        if (!ReferralWithdrawal.STATUS_APPLIED.equals(withdrawal.getStatus())) {
+            throw new IllegalArgumentException("withdrawal is not in applied status");
+        }
+
+        ReferralUser user = referralUserRepository.findById(withdrawal.getUserId())
+                .orElseThrow(() -> new IllegalArgumentException("referral user not found"));
+        int amountFen = defaultZero(withdrawal.getAmountFen());
+        user.setFrozenFen(Math.max(0, defaultZero(user.getFrozenFen()) - amountFen));
+        user.setWithdrawnFen(defaultZero(user.getWithdrawnFen()) + amountFen);
+        user.setBalanceFen(Math.max(0, defaultZero(user.getBalanceFen()) - amountFen));
+        referralUserRepository.save(user);
+
+        withdrawal.setStatus(ReferralWithdrawal.STATUS_SUCCESS);
+        withdrawal.setRemark(trim(remark, 255));
+        referralWithdrawalRepository.save(withdrawal);
+
+        List<ReferralReward> rewards = referralRewardRepository.findByInviterUserIdOrderBySettledAtDesc(user.getId());
+        int remaining = amountFen;
+        for (ReferralReward reward : rewards) {
+            if (remaining <= 0) {
+                break;
+            }
+            if (!ReferralReward.STATUS_AVAILABLE.equals(reward.getStatus())) {
+                continue;
+            }
+            reward.setStatus(ReferralReward.STATUS_WITHDRAWN);
+            reward.setWithdrawalId(withdrawal.getId());
+            referralRewardRepository.save(reward);
+            remaining -= defaultZero(reward.getAmountFen());
+        }
+    }
+
+    @Transactional
+    public void rejectWithdrawal(Long withdrawalId, String remark) {
+        ReferralWithdrawal withdrawal = referralWithdrawalRepository.findById(withdrawalId)
+                .orElseThrow(() -> new IllegalArgumentException("withdrawal not found"));
+        if (!ReferralWithdrawal.STATUS_APPLIED.equals(withdrawal.getStatus())) {
+            throw new IllegalArgumentException("withdrawal is not in applied status");
+        }
+
+        ReferralUser user = referralUserRepository.findById(withdrawal.getUserId())
+                .orElseThrow(() -> new IllegalArgumentException("referral user not found"));
+        int amountFen = defaultZero(withdrawal.getAmountFen());
+        user.setFrozenFen(Math.max(0, defaultZero(user.getFrozenFen()) - amountFen));
+        user.setWithdrawableFen(defaultZero(user.getWithdrawableFen()) + amountFen);
+        referralUserRepository.save(user);
+
+        withdrawal.setStatus(ReferralWithdrawal.STATUS_REJECTED);
+        withdrawal.setRemark(trim(remark, 255));
+        referralWithdrawalRepository.save(withdrawal);
+    }
+
+    @Transactional
+    public void recordPremiumPayment(PayOrder payOrder) {
+        if (payOrder == null || payOrder.getPhone() == null || payOrder.getPhone().isBlank()) {
             return;
         }
 
-        ReferralUser invitee = referralUserRepository.findById(order.getReferralUserId()).orElse(null);
+        ReferralUser invitee = referralUserRepository.findByPhone(normalizePhone(payOrder.getPhone())).orElse(null);
         if (invitee == null) {
             return;
         }
 
-        markUserAsEligible(invitee);
+        invitee.setPremiumPaidCount(defaultZero(invitee.getPremiumPaidCount()) + 1);
+        invitee.setInviterEligible(Boolean.TRUE);
+        referralUserRepository.save(invitee);
 
-        Optional<ReferralBinding> bindingOpt = referralBindingRepository.findByInviteeUserId(invitee.getId());
-        if (bindingOpt.isEmpty()) {
-            order.setReferralSettled(true);
+        if (payOrder.getId() == null || referralRewardRepository.existsByPayOrderId(payOrder.getId())) {
             return;
         }
 
-        ReferralBinding binding = bindingOpt.get();
-        ReferralUser inviter = referralUserRepository.findById(binding.getInviterUserId()).orElse(null);
-        if (inviter == null || !Boolean.TRUE.equals(inviter.getInviterEligible())) {
-            order.setReferralSettled(true);
+        ReferralBinding binding = referralBindingRepository.findByInviteeUserId(invitee.getId()).orElse(null);
+        if (binding == null || binding.getInviterUserId() == null) {
+            return;
+        }
+        if (referralUserRepository.findById(binding.getInviterUserId()).isEmpty()) {
             return;
         }
 
-        int rewardFen = calculateRewardFen(order.getAmountFen());
-        if (rewardFen <= 0) {
-            order.setReferralSettled(true);
+        int rewardAmountFen = resolveAutoRewardAmountFen(payOrder);
+        if (rewardAmountFen <= 0) {
             return;
         }
 
         ReferralReward reward = new ReferralReward();
-        reward.setPayOrderId(order.getId());
-        reward.setInviterUserId(inviter.getId());
+        reward.setPayOrderId(payOrder.getId());
+        reward.setInviterUserId(binding.getInviterUserId());
         reward.setInviteeUserId(invitee.getId());
-        reward.setAmountFen(rewardFen);
-        reward.setStatus(ReferralReward.STATUS_AVAILABLE);
+        reward.setAmountFen(rewardAmountFen);
+        reward.setRemark(AUTO_REWARD_REMARK);
         referralRewardRepository.save(reward);
-
-        inviter.setBalanceFen(nullSafe(inviter.getBalanceFen()) + rewardFen);
-        inviter.setWithdrawableFen(nullSafe(inviter.getWithdrawableFen()) + rewardFen);
-        referralUserRepository.save(inviter);
-
-        order.setReferralSettled(true);
+        applyRewardToUser(binding.getInviterUserId(), rewardAmountFen, true);
     }
 
-    @Transactional
-    public void markUserAsEligible(ReferralUser user) {
-        if (user == null) {
-            return;
-        }
-        user.setPremiumPaidCount(nullSafe(user.getPremiumPaidCount()) + 1);
-        user.setInviterEligible(true);
-        referralUserRepository.save(user);
-    }
-
-    public Long resolveUserIdByPhone(String phone) {
-        if (phone == null || phone.isBlank()) {
-            return null;
-        }
-        return referralUserRepository.findByPhone(normalizePhone(phone)).map(ReferralUser::getId).orElse(null);
-    }
-
-    @Transactional(readOnly = true)
-    public List<ReferralUser> listUsers() {
-        return referralUserRepository.findAll();
-    }
-
-    @Transactional(readOnly = true)
-    public List<ReferralBinding> listBindings() {
-        return referralBindingRepository.findAll();
-    }
-
-    @Transactional(readOnly = true)
-    public List<ReferralReward> listRewards() {
-        return referralRewardRepository.findAll();
-    }
-
-    @Transactional(readOnly = true)
-    public List<ReferralWithdrawal> listWithdrawals() {
-        return referralWithdrawalRepository.findAll();
-    }
-
-    @Transactional
-    public Map<String, Object> approveWithdrawal(Long withdrawalId, String remark) {
-        ReferralWithdrawal withdrawal = referralWithdrawalRepository.findById(withdrawalId)
-                .orElseThrow(() -> new PaymentException("withdrawal_not_found", "提现单不存在", HttpStatus.NOT_FOUND));
-        if (!ReferralWithdrawal.STATUS_APPLIED.equals(withdrawal.getStatus())) {
-            throw new PaymentException("withdrawal_status_invalid", "当前提现单状态不可审核通过", HttpStatus.BAD_REQUEST);
-        }
-
-        ReferralUser user = referralUserRepository.findById(withdrawal.getUserId())
-                .orElseThrow(() -> new PaymentException("referral_user_not_found", "返现账户不存在", HttpStatus.NOT_FOUND));
-        withdrawal.setStatus(ReferralWithdrawal.STATUS_PAID);
-        withdrawal.setRemark(trimToNull(remark) == null ? "后台审核通过，等待平台打款" : remark.trim());
-        referralWithdrawalRepository.save(withdrawal);
-
-        user.setFrozenFen(Math.max(0, nullSafe(user.getFrozenFen()) - nullSafe(withdrawal.getAmountFen())));
-        user.setWithdrawnFen(nullSafe(user.getWithdrawnFen()) + nullSafe(withdrawal.getAmountFen()));
-        referralUserRepository.save(user);
-
-        for (ReferralReward reward : referralRewardRepository.findByWithdrawalId(withdrawal.getId())) {
-            reward.setStatus(ReferralReward.STATUS_WITHDRAWN);
-            referralRewardRepository.save(reward);
-        }
-
-        return Map.of("status", "ok", "withdrawalId", withdrawalId, "action", "approved");
-    }
-
-    @Transactional
-    public Map<String, Object> rejectWithdrawal(Long withdrawalId, String remark) {
-        ReferralWithdrawal withdrawal = referralWithdrawalRepository.findById(withdrawalId)
-                .orElseThrow(() -> new PaymentException("withdrawal_not_found", "提现单不存在", HttpStatus.NOT_FOUND));
-        if (!ReferralWithdrawal.STATUS_APPLIED.equals(withdrawal.getStatus())) {
-            throw new PaymentException("withdrawal_status_invalid", "当前提现单状态不可驳回", HttpStatus.BAD_REQUEST);
-        }
-
-        ReferralUser user = referralUserRepository.findById(withdrawal.getUserId())
-                .orElseThrow(() -> new PaymentException("referral_user_not_found", "返现账户不存在", HttpStatus.NOT_FOUND));
-        withdrawal.setStatus(ReferralWithdrawal.STATUS_REJECTED);
-        withdrawal.setRemark(trimToNull(remark) == null ? "后台驳回，余额已退回可提现" : remark.trim());
-        referralWithdrawalRepository.save(withdrawal);
-
-        user.setFrozenFen(Math.max(0, nullSafe(user.getFrozenFen()) - nullSafe(withdrawal.getAmountFen())));
-        user.setWithdrawableFen(nullSafe(user.getWithdrawableFen()) + nullSafe(withdrawal.getAmountFen()));
-        referralUserRepository.save(user);
-
-        for (ReferralReward reward : referralRewardRepository.findByWithdrawalId(withdrawal.getId())) {
-            reward.setStatus(ReferralReward.STATUS_AVAILABLE);
-            reward.setWithdrawalId(null);
-            referralRewardRepository.save(reward);
-        }
-
-        return Map.of("status", "ok", "withdrawalId", withdrawalId, "action", "rejected");
-    }
-
-    @Transactional
-    public Map<String, Object> rebindInvitee(Long inviteeUserId, Long inviterUserId, String source) {
-        if (inviteeUserId == null || inviterUserId == null || inviteeUserId.equals(inviterUserId)) {
-            throw new PaymentException("binding_invalid", "邀请关系参数无效", HttpStatus.BAD_REQUEST);
-        }
-        ReferralUser invitee = referralUserRepository.findById(inviteeUserId)
-                .orElseThrow(() -> new PaymentException("invitee_not_found", "被邀请人账户不存在", HttpStatus.NOT_FOUND));
-        ReferralUser inviter = referralUserRepository.findById(inviterUserId)
-                .orElseThrow(() -> new PaymentException("inviter_not_found", "邀请人账户不存在", HttpStatus.NOT_FOUND));
-        if (!Boolean.TRUE.equals(inviter.getInviterEligible())) {
-            throw new PaymentException("inviter_not_eligible", "该邀请人账户尚未激活邀请资格", HttpStatus.BAD_REQUEST);
-        }
-
-        ReferralBinding binding = referralBindingRepository.findByInviteeUserId(inviteeUserId).orElseGet(ReferralBinding::new);
-        binding.setInviterUserId(inviterUserId);
-        binding.setInviteeUserId(inviteeUserId);
-        binding.setInviteCode(inviter.getInviteCode());
-        binding.setBindSource(trimToNull(source) == null ? "admin-rebind" : source.trim());
-        referralBindingRepository.save(binding);
-        return Map.of("status", "ok", "inviteeUserId", invitee.getId(), "inviterUserId", inviter.getId());
-    }
-
-    @Transactional
-    public Map<String, Object> issueReward(Long payOrderId, Long inviterUserId, Integer amountFen, String remark) {
-        if (payOrderId == null || inviterUserId == null) {
-            throw new PaymentException("reward_params_invalid", "补发返现参数不完整", HttpStatus.BAD_REQUEST);
-        }
-        if (referralRewardRepository.findByPayOrderId(payOrderId).isPresent()) {
-            throw new PaymentException("reward_exists", "该订单已存在返现记录", HttpStatus.BAD_REQUEST);
-        }
-        ReferralUser inviter = referralUserRepository.findById(inviterUserId)
-                .orElseThrow(() -> new PaymentException("inviter_not_found", "邀请人账户不存在", HttpStatus.NOT_FOUND));
-        int rewardFen = amountFen == null ? 0 : amountFen;
-        if (rewardFen <= 0) {
-            throw new PaymentException("reward_amount_invalid", "补发返现金额无效", HttpStatus.BAD_REQUEST);
-        }
-
-        ReferralReward reward = new ReferralReward();
-        reward.setPayOrderId(payOrderId);
-        reward.setInviterUserId(inviterUserId);
-        reward.setInviteeUserId(0L);
-        reward.setAmountFen(rewardFen);
-        reward.setStatus(ReferralReward.STATUS_AVAILABLE);
-        referralRewardRepository.save(reward);
-
-        inviter.setBalanceFen(nullSafe(inviter.getBalanceFen()) + rewardFen);
-        inviter.setWithdrawableFen(nullSafe(inviter.getWithdrawableFen()) + rewardFen);
-        referralUserRepository.save(inviter);
-        return Map.of("status", "ok", "payOrderId", payOrderId, "action", "issued", "remark", trimToNull(remark));
-    }
-
-    @Transactional
-    public Map<String, Object> cancelReward(Long rewardId, String remark) {
-        ReferralReward reward = referralRewardRepository.findById(rewardId)
-                .orElseThrow(() -> new PaymentException("reward_not_found", "返现记录不存在", HttpStatus.NOT_FOUND));
-        if (!ReferralReward.STATUS_AVAILABLE.equals(reward.getStatus())) {
-            throw new PaymentException("reward_status_invalid", "只有可用返现才能撤销", HttpStatus.BAD_REQUEST);
-        }
-        ReferralUser inviter = referralUserRepository.findById(reward.getInviterUserId())
-                .orElseThrow(() -> new PaymentException("inviter_not_found", "邀请人账户不存在", HttpStatus.NOT_FOUND));
-        inviter.setBalanceFen(Math.max(0, nullSafe(inviter.getBalanceFen()) - nullSafe(reward.getAmountFen())));
-        inviter.setWithdrawableFen(Math.max(0, nullSafe(inviter.getWithdrawableFen()) - nullSafe(reward.getAmountFen())));
-        referralUserRepository.save(inviter);
-
-        reward.setStatus(ReferralReward.STATUS_CANCELED);
-        reward.setWithdrawalId(null);
-        referralRewardRepository.save(reward);
-        return Map.of("status", "ok", "rewardId", rewardId, "action", "canceled", "remark", trimToNull(remark));
-    }
-
-    @Transactional(readOnly = true)
-    public Map<String, Object> getCurrentAccount(String phone, String platform, String openid) {
-        ReferralUser user = findCurrentUser(phone, platform, openid)
-                .orElseThrow(() -> new PaymentException("referral_user_not_found", "当前返现账户不存在", HttpStatus.NOT_FOUND));
-        return toProfile(user);
-    }
-
-    private Optional<ReferralUser> findCurrentUser(String phone, String platform, String openid) {
-        String normalizedPhone = trimToNull(phone);
-        if (normalizedPhone != null) {
-            Optional<ReferralUser> byPhone = referralUserRepository.findByPhone(normalizePhone(normalizedPhone));
-            if (byPhone.isPresent()) {
-                return byPhone;
+    public Map<String, Object> getOrderReferralSnapshot(PayOrder payOrder) {
+        Map<String, Object> snapshot = new LinkedHashMap<>();
+        snapshot.put("referralUserId", null);
+        snapshot.put("referralPhone", payOrder == null ? null : payOrder.getPhone());
+        snapshot.put("referralSettled", false);
+        if (payOrder == null || payOrder.getPhone() == null || payOrder.getPhone().isBlank()) {
+            if (payOrder != null && payOrder.getId() != null) {
+                referralRewardRepository.findFirstByPayOrderId(payOrder.getId()).ifPresent((reward) -> {
+                    snapshot.put("referralUserId", reward.getInviteeUserId());
+                    snapshot.put("referralSettled", true);
+                });
             }
+            return snapshot;
         }
-        String normalizedOpenid = trimToNull(openid);
-        String normalizedPlatform = normalizePlatform(platform);
-        if (normalizedOpenid == null) {
-            return Optional.empty();
+
+        referralUserRepository.findByPhone(normalizePhone(payOrder.getPhone())).ifPresent((user) -> {
+            snapshot.put("referralUserId", user.getId());
+        });
+        if (payOrder.getId() != null) {
+            snapshot.put("referralSettled", referralRewardRepository.existsByPayOrderId(payOrder.getId()));
         }
-        if (PLATFORM_DOUYIN.equals(normalizedPlatform)) {
-            return referralUserRepository.findByDouyinOpenid(normalizedOpenid);
-        }
-        return referralUserRepository.findByWechatOpenid(normalizedOpenid);
+        return snapshot;
     }
 
-    private ReferralUser requireUser(String phone) {
-        return referralUserRepository.findByPhone(normalizePhone(phone))
-                .orElseThrow(() -> new PaymentException("referral_user_not_found", "返现账户不存在", HttpStatus.NOT_FOUND));
-    }
-
-    private void bindInviterIfNeeded(ReferralUser invitee, String inviteCode, String source) {
-        if (invitee == null || invitee.getId() == null || inviteCode == null || inviteCode.isBlank()) {
-            return;
+    private ReferralUser findUser(String phone, String openid) {
+        if (phone != null && !phone.isBlank()) {
+            return referralUserRepository.findByPhone(normalizePhone(phone))
+                    .orElseThrow(() -> new IllegalArgumentException("referral user not found"));
         }
-        if (referralBindingRepository.findByInviteeUserId(invitee.getId()).isPresent()) {
-            return;
+        if (openid != null && !openid.isBlank()) {
+            return referralUserRepository.findByWechatOpenid(trim(openid, 128))
+                    .orElseThrow(() -> new IllegalArgumentException("referral user not found"));
         }
-        ReferralUser inviter = referralUserRepository.findByInviteCode(inviteCode).orElse(null);
-        if (inviter == null || inviter.getId().equals(invitee.getId())) {
-            return;
+        throw new IllegalArgumentException("phone or openid is required");
+    }
+
+    private void applyRewardToUser(Long inviterUserId, Integer amountFen, boolean add) {
+        ReferralUser user = referralUserRepository.findById(inviterUserId)
+                .orElseThrow(() -> new IllegalArgumentException("inviter not found"));
+        int amount = defaultZero(amountFen);
+        int delta = add ? amount : -amount;
+        user.setBalanceFen(Math.max(0, defaultZero(user.getBalanceFen()) + delta));
+        user.setWithdrawableFen(Math.max(0, defaultZero(user.getWithdrawableFen()) + delta));
+        if (add) {
+            user.setInviterEligible(Boolean.TRUE);
         }
-        if (!Boolean.TRUE.equals(inviter.getInviterEligible())) {
-            return;
+        referralUserRepository.save(user);
+    }
+
+    private Map<String, Object> toReferralProfile(ReferralUser user) {
+        Map<String, Object> map = new LinkedHashMap<>();
+        map.put("id", user.getId());
+        map.put("userId", user.getId());
+        map.put("phone", user.getPhone());
+        map.put("inviteCode", user.getInviteCode());
+        map.put("displayName", user.getDisplayName());
+        map.put("balanceFen", defaultZero(user.getBalanceFen()));
+        map.put("availableFen", defaultZero(user.getWithdrawableFen()));
+        map.put("withdrawableFen", defaultZero(user.getWithdrawableFen()));
+        map.put("frozenFen", defaultZero(user.getFrozenFen()));
+        map.put("withdrawnFen", defaultZero(user.getWithdrawnFen()));
+        map.put("premiumPaidCount", defaultZero(user.getPremiumPaidCount()));
+        map.put("inviterEligible", Boolean.TRUE.equals(user.getInviterEligible()));
+        map.put("wechatOpenid", user.getWechatOpenid());
+        map.put("douyinOpenid", user.getDouyinOpenid());
+        map.put("unionid", user.getUnionid());
+        map.put("createdAt", user.getCreatedAt());
+        return map;
+    }
+
+    private List<Map<String, Object>> mapBindings(List<ReferralBinding> bindings, Long onlyUserId) {
+        List<Map<String, Object>> list = new ArrayList<>();
+        for (ReferralBinding binding : bindings) {
+            if (onlyUserId != null && !onlyUserId.equals(binding.getInviterUserId())) {
+                continue;
+            }
+            Map<String, Object> item = new LinkedHashMap<>();
+            item.put("id", binding.getId());
+            item.put("inviterUserId", binding.getInviterUserId());
+            item.put("inviteeUserId", binding.getInviteeUserId());
+            item.put("inviteCode", binding.getInviteCode());
+            item.put("bindSource", binding.getBindSource());
+            item.put("boundAt", binding.getBoundAt());
+            list.add(item);
         }
-        ReferralBinding binding = new ReferralBinding();
-        binding.setInviterUserId(inviter.getId());
-        binding.setInviteeUserId(invitee.getId());
-        binding.setInviteCode(inviteCode);
-        binding.setBindSource(source);
-        referralBindingRepository.save(binding);
+        return list;
     }
 
-    private Map<String, Object> toProfile(ReferralUser user) {
-        Map<String, Object> data = new LinkedHashMap<>();
-        data.put("userId", user.getId());
-        data.put("phone", user.getPhone());
-        data.put("inviteCode", user.getInviteCode());
-        data.put("displayName", user.getDisplayName());
-        data.put("balanceFen", nullSafe(user.getBalanceFen()));
-        data.put("withdrawableFen", nullSafe(user.getWithdrawableFen()));
-        data.put("availableFen", nullSafe(user.getWithdrawableFen()));
-        data.put("frozenFen", nullSafe(user.getFrozenFen()));
-        data.put("withdrawnFen", nullSafe(user.getWithdrawnFen()));
-        data.put("premiumPaidCount", nullSafe(user.getPremiumPaidCount()));
-        data.put("inviterEligible", Boolean.TRUE.equals(user.getInviterEligible()));
-        return data;
-    }
+    private List<Map<String, Object>> mapRewards(List<ReferralReward> rewards) {
+        List<Map<String, Object>> list = new ArrayList<>();
+        for (ReferralReward reward : rewards) {
+            Map<String, Object> item = new LinkedHashMap<>();
+            item.put("id", reward.getId());
+            item.put("payOrderId", reward.getPayOrderId());
+            item.put("inviterUserId", reward.getInviterUserId());
+            item.put("inviteeUserId", reward.getInviteeUserId());
+            item.put("amountFen", reward.getAmountFen());
+            item.put("status", reward.getStatus());
+            item.put("withdrawalId", reward.getWithdrawalId());
+            item.put("remark", reward.getRemark());
+            item.put("settledAt", reward.getSettledAt());
 
-    private Map<String, Object> toRewardMap(ReferralReward reward) {
-        return Map.of(
-                "id", reward.getId(),
-                "amountFen", nullSafe(reward.getAmountFen()),
-                "status", reward.getStatus(),
-                "settledAt", reward.getSettledAt(),
-                "withdrawalId", reward.getWithdrawalId()
-        );
-    }
-
-    private Map<String, Object> toBindingMap(ReferralBinding binding) {
-        return Map.of(
-                "id", binding.getId(),
-                "inviteCode", binding.getInviteCode(),
-                "boundAt", binding.getBoundAt(),
-                "bindSource", binding.getBindSource()
-        );
-    }
-
-    private Map<String, Object> toWithdrawalMap(ReferralWithdrawal withdrawal) {
-        Map<String, Object> data = new LinkedHashMap<>();
-        data.put("id", withdrawal.getId());
-        data.put("amountFen", nullSafe(withdrawal.getAmountFen()));
-        data.put("status", withdrawal.getStatus());
-        data.put("remark", withdrawal.getRemark());
-        data.put("createdAt", withdrawal.getCreatedAt());
-        return data;
-    }
-
-    private int calculateRewardFen(Integer amountFen) {
-        int amount = nullSafe(amountFen);
-        return amount <= 0 ? 0 : (int) Math.floor(amount * REWARD_PERCENT / 100.0);
-    }
-
-    private String resolveWithdrawAccount(ReferralUser user, String withdrawPlatform) {
-        String platform = normalizePlatform(withdrawPlatform);
-        if (PLATFORM_DOUYIN.equals(platform)) {
-            return "DOUYIN:" + (trimToNull(user.getDouyinOpenid()) == null ? user.getPhone() : user.getDouyinOpenid());
+            referralUserRepository.findById(reward.getInviterUserId()).ifPresent((user) -> {
+                item.put("inviterPhone", user.getPhone());
+                item.put("inviterDisplayName", user.getDisplayName());
+            });
+            if (reward.getInviteeUserId() != null) {
+                referralUserRepository.findById(reward.getInviteeUserId()).ifPresent((user) -> {
+                    item.put("inviteePhone", user.getPhone());
+                    item.put("inviteeDisplayName", user.getDisplayName());
+                });
+            }
+            list.add(item);
         }
-        return "WECHAT:" + (trimToNull(user.getWechatOpenid()) == null ? user.getPhone() : user.getWechatOpenid());
+        return list;
     }
 
-    private String resolveWechatPhone(WechatPhoneBindRequest request) {
-        String phoneNumber = trimToNull(request.getPhoneNumber());
-        if (phoneNumber != null) {
-            return normalizePhone(phoneNumber);
+    private List<Map<String, Object>> mapWithdrawals(List<ReferralWithdrawal> withdrawals) {
+        List<Map<String, Object>> list = new ArrayList<>();
+        for (ReferralWithdrawal withdrawal : withdrawals) {
+            Map<String, Object> item = new LinkedHashMap<>();
+            item.put("id", withdrawal.getId());
+            item.put("userId", withdrawal.getUserId());
+            item.put("amountFen", withdrawal.getAmountFen());
+            item.put("status", withdrawal.getStatus());
+            item.put("withdrawPlatform", withdrawal.getWithdrawPlatform());
+            item.put("payeeAccountSnapshot", withdrawal.getPayeeAccountSnapshot());
+            item.put("remark", withdrawal.getRemark());
+            item.put("createdAt", withdrawal.getCreatedAt());
+            item.put("updatedAt", withdrawal.getUpdatedAt());
+            item.put("reviewMode", "MANUAL_REVIEW");
+            item.put("payoutMode", "MANUAL_PAYOUT");
+            referralUserRepository.findById(withdrawal.getUserId()).ifPresent((user) -> {
+                item.put("userPhone", user.getPhone());
+                item.put("userDisplayName", user.getDisplayName());
+            });
+            list.add(item);
         }
-        String phoneCode = trimToNull(request.getPhoneCode());
-        if (phoneCode != null) {
-            return "1" + String.format("%010d", Math.abs(phoneCode.hashCode()) % 10000000000L);
-        }
-        throw new PaymentException("phone_required", "缺少微信手机号授权结果", HttpStatus.BAD_REQUEST);
+        return list;
     }
 
-    private int nullSafe(Integer value) {
-        return value == null ? 0 : value;
-    }
-
-    private String normalizePhone(String phone) {
-        String value = trimToNull(phone);
-        if (value == null) {
-            throw new PaymentException("phone_required", "手机号不能为空", HttpStatus.BAD_REQUEST);
+    private int resolveAutoRewardAmountFen(PayOrder payOrder) {
+        int orderAmountFen = defaultZero(payOrder.getTotalFee());
+        if (orderAmountFen <= 0) {
+            return 0;
         }
-        return value.replaceAll("\\s+", "");
-    }
-
-    private String normalizePlatform(String platform) {
-        String value = trimToNull(platform);
-        if (value == null) {
-            return PLATFORM_WECHAT;
-        }
-        if ("DOUYIN".equalsIgnoreCase(value) || "TT".equalsIgnoreCase(value)) {
-            return PLATFORM_DOUYIN;
-        }
-        return PLATFORM_WECHAT;
-    }
-
-    private String trimToNull(String value) {
-        return value == null || value.isBlank() ? null : value.trim();
+        return Math.min(orderAmountFen, DEFAULT_AUTO_REWARD_FEN);
     }
 
     private String generateInviteCode() {
-        while (true) {
-            StringBuilder sb = new StringBuilder("INV");
-            for (int i = 0; i < 6; i++) {
-                sb.append(CODE_CHARS.charAt(RNG.nextInt(CODE_CHARS.length())));
+        String code;
+        do {
+            StringBuilder sb = new StringBuilder(8);
+            for (int i = 0; i < 8; i++) {
+                sb.append(INVITE_CHARS.charAt(RNG.nextInt(INVITE_CHARS.length())));
             }
-            String code = sb.toString();
-            if (referralUserRepository.findByInviteCode(code).isEmpty()) {
-                return code;
-            }
+            code = sb.toString();
+        } while (referralUserRepository.findByInviteCode(code).isPresent());
+        return code;
+    }
+
+    private String normalizePhone(String phone) {
+        if (phone == null || phone.isBlank()) {
+            throw new IllegalArgumentException("phone is required");
         }
+        return phone.replaceAll("\\s+", "").trim();
+    }
+
+    private String normalizeInviteCode(String inviteCode) {
+        return inviteCode == null ? "" : inviteCode.trim().toUpperCase();
+    }
+
+    private String normalizePlatform(String platform) {
+        if (platform == null || platform.isBlank()) {
+            return "WECHAT";
+        }
+        String value = platform.trim().toUpperCase();
+        return "ALIPAY".equals(value) ? "ALIPAY" : "WECHAT";
+    }
+
+    private String trim(String value, int maxLength) {
+        if (value == null) {
+            return null;
+        }
+        String trimmed = value.trim();
+        return trimmed.length() > maxLength ? trimmed.substring(0, maxLength) : trimmed;
+    }
+
+    private int defaultZero(Integer value) {
+        return value == null ? 0 : value;
     }
 }

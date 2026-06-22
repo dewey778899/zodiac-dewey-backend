@@ -8,33 +8,36 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
 import java.time.LocalDateTime;
+import java.util.List;
 import java.util.Optional;
 
 public interface PayOrderRepository extends JpaRepository<PayOrder, Long> {
     Optional<PayOrder> findByOutTradeNo(String outTradeNo);
+    Optional<PayOrder> findByPayjsOrderId(String payjsOrderId);
     Optional<PayOrder> findByAccessToken(String accessToken);
-    Optional<PayOrder> findFirstByDeviceTokenAndStatusInOrderByCreatedAtDesc(String deviceToken, Iterable<String> statuses);
 
     Page<PayOrder> findByStatusOrderByCreatedAtDesc(String status, Pageable pageable);
-    Page<PayOrder> findByChannelAndStatusOrderByCreatedAtDesc(String channel, String status, Pageable pageable);
     Page<PayOrder> findAllByOrderByCreatedAtDesc(Pageable pageable);
     long countByStatus(String status);
-    long countByChannel(String channel);
-    long countByChannelAndStatus(String channel, String status);
-    long countByCreatedAtGreaterThanEqual(LocalDateTime start);
-    long countByStatusAndCreatedAtGreaterThanEqual(String status, LocalDateTime start);
-    long countByChannelAndCreatedAtGreaterThanEqual(String channel, LocalDateTime start);
-    long countByChannelAndStatusAndCreatedAtGreaterThanEqual(String channel, String status, LocalDateTime start);
+    long countByStatusAndPaidAtGreaterThanEqual(String status, LocalDateTime paidAt);
+    long countByStatusAndChannel(String status, String channel);
+    long countByStatusAndChannelAndPaidAtGreaterThanEqual(String status, String channel, LocalDateTime paidAt);
+    List<PayOrder> findByCreatedAtGreaterThanEqualOrderByCreatedAtAsc(LocalDateTime start);
+    List<PayOrder> findByPaidAtGreaterThanEqualOrderByPaidAtAsc(LocalDateTime start);
 
-    @Query("select count(p) from PayOrder p where p.notifyVerified = false")
-    long countNotifyVerifyFailed();
-
-    @Query("select count(p) from PayOrder p where p.notifyVerified = false and p.createdAt >= :start")
-    long countNotifyVerifyFailedSince(@Param("start") LocalDateTime start);
-
-    @Query("select count(p) from PayOrder p where p.status = 'PAID' and p.tokenConsumedAt is not null")
-    long countConsumedPaidOrders();
-
-    @Query("select count(p) from PayOrder p where p.status = 'PAID' and p.tokenConsumedAt is not null and p.createdAt >= :start")
-    long countConsumedPaidOrdersSince(@Param("start") LocalDateTime start);
+    @Query("""
+            SELECT p FROM PayOrder p
+            WHERE (:status IS NULL OR :status = '' OR p.status = :status)
+              AND (:channel IS NULL OR :channel = '' OR LOWER(COALESCE(p.channel, '')) = LOWER(:channel))
+              AND (:query IS NULL OR :query = ''
+                OR LOWER(p.outTradeNo) LIKE LOWER(CONCAT('%', :query, '%'))
+                OR LOWER(COALESCE(p.transactionId, '')) LIKE LOWER(CONCAT('%', :query, '%'))
+                OR LOWER(COALESCE(p.openid, '')) LIKE LOWER(CONCAT('%', :query, '%'))
+                OR LOWER(COALESCE(p.phone, '')) LIKE LOWER(CONCAT('%', :query, '%')))
+            ORDER BY p.createdAt DESC
+            """)
+    Page<PayOrder> searchOrders(@Param("status") String status,
+                                @Param("channel") String channel,
+                                @Param("query") String query,
+                                Pageable pageable);
 }

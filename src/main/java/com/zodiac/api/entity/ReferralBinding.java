@@ -9,9 +9,9 @@ import java.time.LocalDateTime;
 @Data
 @Entity
 @Table(name = "referral_binding", indexes = {
-        @Index(name = "idx_ref_binding_inviter", columnList = "inviter_user_id"),
-        @Index(name = "idx_ref_binding_invitee", columnList = "invitee_user_id", unique = true),
-        @Index(name = "idx_ref_binding_code", columnList = "invite_code")
+        @Index(name = "idx_referral_binding_invitee", columnList = "invitee_user_id", unique = true),
+        @Index(name = "idx_referral_binding_inviter", columnList = "inviter_user_id"),
+        @Index(name = "idx_referral_binding_code", columnList = "invite_code")
 })
 public class ReferralBinding {
 

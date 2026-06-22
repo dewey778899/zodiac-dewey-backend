@@ -2,6 +2,7 @@ package com.zodiac.api.service;
 
 import com.zodiac.api.dto.AdminOverviewResponse;
 import com.zodiac.api.dto.AdminReportPageResponse;
+import com.zodiac.api.entity.PayOrder;
 import com.zodiac.api.entity.SoulmateReport;
 import com.zodiac.api.repository.AnalyticsEventRepository;
 import com.zodiac.api.repository.PayOrderRepository;
@@ -50,38 +51,34 @@ public class AdminDashboardService {
                 .claudeToday(reportRepository.countByModelCodeAndCreatedAtGreaterThanEqual("claude", todayStart))
                 .build();
 
-        AdminOverviewResponse.PaymentMetricsBlock paymentCreate = buildPaymentBlock(AnalyticsService.EVENT_PAYMENT_ORDER_CREATE, todayStart);
-        AdminOverviewResponse.PaymentMetricsBlock paymentSuccess = buildPaymentBlock(AnalyticsService.EVENT_PAYMENT_ORDER_PAID, todayStart);
-        AdminOverviewResponse.PaymentMetricsBlock callbackFailure = AdminOverviewResponse.PaymentMetricsBlock.builder()
-                .total(payOrderRepository.countNotifyVerifyFailed())
-                .today(payOrderRepository.countNotifyVerifyFailedSince(todayStart))
-                .wechatTotal(0)
-                .wechatToday(0)
-                .alipayTotal(0)
-                .alipayToday(0)
+        long paymentPaidTotal = payOrderRepository.countByStatus(PayOrder.STATUS_PAID);
+        long paymentPaidToday = payOrderRepository.countByStatusAndPaidAtGreaterThanEqual(PayOrder.STATUS_PAID, todayStart);
+        long paymentWechatTotal = payOrderRepository.countByStatusAndChannel(PayOrder.STATUS_PAID, "wechat");
+        long paymentWechatToday = payOrderRepository.countByStatusAndChannelAndPaidAtGreaterThanEqual(
+                PayOrder.STATUS_PAID, "wechat", todayStart);
+        long paymentAlipayTotal = payOrderRepository.countByStatusAndChannel(PayOrder.STATUS_PAID, "alipay");
+        long paymentAlipayToday = payOrderRepository.countByStatusAndChannelAndPaidAtGreaterThanEqual(
+                PayOrder.STATUS_PAID, "alipay", todayStart);
+        AdminOverviewResponse.MetricsBlock paymentSuccess = AdminOverviewResponse.MetricsBlock.builder()
+                .total(paymentPaidTotal)
+                .today(paymentPaidToday)
+                .wechatTotal(paymentWechatTotal)
+                .wechatToday(paymentWechatToday)
+                .alipayTotal(paymentAlipayTotal)
+                .alipayToday(paymentAlipayToday)
                 .build();
-        AdminOverviewResponse.PaymentMetricsBlock repairCount = buildPaymentBlock(AnalyticsService.EVENT_PAYMENT_REPAIR, todayStart);
 
-        long todayCreated = payOrderRepository.countByCreatedAtGreaterThanEqual(todayStart);
-        long todayPaid = payOrderRepository.countByStatusAndCreatedAtGreaterThanEqual("PAID", todayStart);
-        long totalCreated = payOrderRepository.count();
-        long totalPaid = payOrderRepository.countByStatus("PAID");
+        AdminOverviewResponse.QrMetricsBlock qrModalOpen = buildQrBlock(AnalyticsService.EVENT_QR_MODAL_OPEN, todayStart);
+        AdminOverviewResponse.QrMetricsBlock qrView = buildQrBlock(AnalyticsService.EVENT_QR_VIEW, todayStart);
+        AdminOverviewResponse.QrMetricsBlock qrSwitch = buildQrBlock(AnalyticsService.EVENT_QR_SWITCH, todayStart);
 
         return AdminOverviewResponse.builder()
                 .generateClick(generateClick)
                 .generateSuccess(generateSuccess)
-                .paymentCreate(paymentCreate)
                 .paymentSuccess(paymentSuccess)
-                .callbackFailure(callbackFailure)
-                .repairCount(repairCount)
-                .successRate(AdminOverviewResponse.SuccessRateBlock.builder()
-                        .todayCreated(todayCreated)
-                        .todayPaid(todayPaid)
-                        .todayRate(rate(todayPaid, todayCreated))
-                        .totalCreated(totalCreated)
-                        .totalPaid(totalPaid)
-                        .totalRate(rate(totalPaid, totalCreated))
-                        .build())
+                .qrModalOpen(qrModalOpen)
+                .qrView(qrView)
+                .qrSwitch(qrSwitch)
                 .trends(buildTrends(7))
                 .build();
     }
@@ -114,11 +111,12 @@ public class AdminDashboardService {
                 .relationshipType(report.getRelationshipType())
                 .wechatId(report.getWechatId())
                 .createdAt(report.getCreatedAt() == null ? "" : report.getCreatedAt().format(REPORT_DATE))
+                .summary(buildSummary(report))
                 .build();
     }
 
-    private AdminOverviewResponse.PaymentMetricsBlock buildPaymentBlock(String eventType, LocalDateTime todayStart) {
-        return AdminOverviewResponse.PaymentMetricsBlock.builder()
+    private AdminOverviewResponse.QrMetricsBlock buildQrBlock(String eventType, LocalDateTime todayStart) {
+        return AdminOverviewResponse.QrMetricsBlock.builder()
                 .total(eventCount(eventType))
                 .today(eventCountToday(eventType, todayStart))
                 .wechatTotal(eventCountByChannel(eventType, "wechat"))
@@ -138,29 +136,46 @@ public class AdminDashboardService {
         }
 
         for (Object[] row : analyticsEventRepository.findFieldsForTrendSince(start)) {
-            LocalDate day = ((LocalDateTime) row[0]).toLocalDate();
+            LocalDate day = ((java.time.LocalDateTime) row[0]).toLocalDate();
             TrendAccumulator acc = bucket.get(day);
             if (acc == null) continue;
             String eventType = (String) row[1];
             String modelCode = (String) row[2];
+            String channel   = (String) row[3];
             if (AnalyticsService.EVENT_GENERATE_CLICK.equals(eventType)) {
-                if ("claude".equals(modelCode)) acc.claudeClicks++;
+                if ("claude".equals(modelCode))        acc.claudeClicks++;
                 else if ("deepseek".equals(modelCode)) acc.deepseekClicks++;
-            } else if (AnalyticsService.EVENT_PAYMENT_ORDER_CREATE.equals(eventType)) {
-                acc.paymentCreated++;
-            } else if (AnalyticsService.EVENT_PAYMENT_ORDER_PAID.equals(eventType)) {
-                acc.paymentPaid++;
-            } else if (AnalyticsService.EVENT_PAYMENT_REPAIR.equals(eventType)) {
-                acc.paymentRepair++;
+            } else if (AnalyticsService.EVENT_QR_MODAL_OPEN.equals(eventType)) {
+                acc.qrModalOpens++;
+            } else if (AnalyticsService.EVENT_QR_VIEW.equals(eventType)) {
+                if ("alipay".equals(channel))      acc.alipayViews++;
+                else if ("wechat".equals(channel)) acc.wechatViews++;
             }
         }
 
         for (Object[] row : reportRepository.findCreatedAtAndModelSince(start)) {
-            LocalDate day = ((LocalDateTime) row[0]).toLocalDate();
+            LocalDate day = ((java.time.LocalDateTime) row[0]).toLocalDate();
             TrendAccumulator acc = bucket.get(day);
             if (acc == null) continue;
             if ("claude".equals(row[1])) acc.claudeSuccess++;
-            else acc.deepseekSuccess++;
+            else                          acc.deepseekSuccess++;
+        }
+
+        for (PayOrder order : payOrderRepository.findByCreatedAtGreaterThanEqualOrderByCreatedAtAsc(start)) {
+            LocalDate day = order.getCreatedAt().toLocalDate();
+            TrendAccumulator acc = bucket.get(day);
+            if (acc != null) {
+                acc.paymentCreated++;
+            }
+        }
+
+        for (PayOrder order : payOrderRepository.findByPaidAtGreaterThanEqualOrderByPaidAtAsc(start)) {
+            if (order.getPaidAt() == null) continue;
+            LocalDate day = order.getPaidAt().toLocalDate();
+            TrendAccumulator acc = bucket.get(day);
+            if (acc != null) {
+                acc.paymentPaid++;
+            }
         }
 
         List<AdminOverviewResponse.TrendPoint> points = new ArrayList<>();
@@ -172,16 +187,12 @@ public class AdminDashboardService {
                 .claudeSuccess(acc.claudeSuccess)
                 .paymentCreated(acc.paymentCreated)
                 .paymentPaid(acc.paymentPaid)
-                .callbackFailure(acc.paymentRepair)
+                .callbackFailure(acc.callbackFailure)
+                .qrModalOpens(acc.qrModalOpens)
+                .wechatViews(acc.wechatViews)
+                .alipayViews(acc.alipayViews)
                 .build()));
         return points;
-    }
-
-    private double rate(long numerator, long denominator) {
-        if (denominator <= 0) {
-            return 0D;
-        }
-        return Math.round((numerator * 10000D / denominator)) / 100D;
     }
 
     private long eventCount(String eventType) {
@@ -208,6 +219,17 @@ public class AdminDashboardService {
         return analyticsEventRepository.countByEventTypeAndChannelAndCreatedAtGreaterThanEqual(eventType, channel, start);
     }
 
+    private String buildSummary(SoulmateReport report) {
+        if (report.getTagline() != null && !report.getTagline().isBlank()) {
+            return report.getTagline().trim();
+        }
+        if (report.getFullReport() == null || report.getFullReport().isBlank()) {
+            return "";
+        }
+        String normalized = report.getFullReport().replaceAll("\\s+", " ").trim();
+        return normalized.length() > 120 ? normalized.substring(0, 120) + "..." : normalized;
+    }
+
     private static class TrendAccumulator {
         private long deepseekClicks;
         private long claudeClicks;
@@ -215,6 +237,9 @@ public class AdminDashboardService {
         private long claudeSuccess;
         private long paymentCreated;
         private long paymentPaid;
-        private long paymentRepair;
+        private long callbackFailure;
+        private long qrModalOpens;
+        private long wechatViews;
+        private long alipayViews;
     }
 }

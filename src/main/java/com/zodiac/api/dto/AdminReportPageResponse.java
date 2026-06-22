@@ -26,5 +26,6 @@ public class AdminReportPageResponse {
         private String relationshipType;
         private String createdAt;
         private String wechatId;
+        private String summary;
     }
 }
