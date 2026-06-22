@@ -1,6 +1,12 @@
 package com.zodiac.api.entity;
 
-import jakarta.persistence.*;
+import jakarta.persistence.Column;
+import jakarta.persistence.Entity;
+import jakarta.persistence.GeneratedValue;
+import jakarta.persistence.GenerationType;
+import jakarta.persistence.Id;
+import jakarta.persistence.Index;
+import jakarta.persistence.Table;
 import lombok.Data;
 import org.hibernate.annotations.CreationTimestamp;
 
@@ -17,7 +23,9 @@ public class PayOrder {
 
     public static final String STATUS_CREATED = "CREATED";
     public static final String STATUS_PAID = "PAID";
-    /** token 有效期（小时） */
+    public static final String TRADE_TYPE_NATIVE = "NATIVE";
+    public static final String TRADE_TYPE_H5 = "H5";
+    public static final String TRADE_TYPE_JSAPI = "JSAPI";
     public static final int TOKEN_EXPIRE_HOURS = 24;
 
     @Id
@@ -32,6 +40,9 @@ public class PayOrder {
 
     @Column(name = "total_fee")
     private Integer totalFee;
+
+    @Column(name = "amount_fen")
+    private Integer amountFen;
 
     @Column(name = "status", length = 20, nullable = false)
     private String status = STATUS_CREATED;
@@ -48,34 +59,71 @@ public class PayOrder {
     @Column(name = "scene", length = 50)
     private String scene;
 
-    @Column(name = "report_type", length = 20)
+    @Column(name = "scene_code", length = 30)
+    private String sceneCode;
+
+    @Column(name = "report_type", length = 30)
     private String reportType;
 
-    @Column(name = "subject", length = 100)
+    @Column(name = "subject", length = 255)
     private String subject;
 
-    @Column(name = "return_url", length = 500)
+    @Column(name = "return_url", length = 1000)
     private String returnUrl;
 
-    @Column(name = "transaction_id", length = 64)
+    @Column(name = "trade_type", length = 20)
+    private String tradeType;
+
+    @Column(name = "client_ip", length = 64)
+    private String clientIp;
+
+    @Column(name = "transaction_id", length = 128)
     private String transactionId;
+
+    @Column(name = "wechat_prepay_id", length = 128)
+    private String wechatPrepayId;
+
+    @Column(name = "wechat_mweb_url", length = 1000)
+    private String wechatMwebUrl;
+
+    @Column(name = "wechat_code_url", length = 1000)
+    private String wechatCodeUrl;
+
+    @Column(name = "attach_payload", columnDefinition = "TEXT")
+    private String attachPayload;
 
     @Column(name = "paid_at")
     private LocalDateTime paidAt;
 
-    /**
-     * 支付成功后生成的一次性访问 Token。
-     * 前端凭此 token 调用 /api/compatibility (claude 版) 而无需再走支付。
-     * 有效期 TOKEN_EXPIRE_HOURS 小时，使用后即消耗（tokenConsumedAt 非 null）。
-     */
     @Column(name = "access_token", length = 64, unique = true)
     private String accessToken;
 
-    /** token 被消耗的时间（非 null 表示已使用） */
     @Column(name = "token_consumed_at")
     private LocalDateTime tokenConsumedAt;
 
     @CreationTimestamp
     @Column(name = "created_at", nullable = false, updatable = false)
     private LocalDateTime createdAt;
+
+    public Integer getAmountFen() {
+        return amountFen != null ? amountFen : totalFee;
+    }
+
+    public void setAmountFen(Integer amountFen) {
+        this.amountFen = amountFen;
+        if (this.totalFee == null) {
+            this.totalFee = amountFen;
+        }
+    }
+
+    public String getSceneCode() {
+        return sceneCode != null && !sceneCode.isBlank() ? sceneCode : scene;
+    }
+
+    public void setSceneCode(String sceneCode) {
+        this.sceneCode = sceneCode;
+        if ((this.scene == null || this.scene.isBlank()) && sceneCode != null && !sceneCode.isBlank()) {
+            this.scene = sceneCode;
+        }
+    }
 }
