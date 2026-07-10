@@ -13,7 +13,7 @@ public class PremiumUnlockRequestDto {
     @AssertTrue(message = "请先确认已关注抖音账号")
     private boolean confirmedFollowed;
 
-    @NotBlank(message = "报告类型不能为空")
+    @NotBlank(message = "内容类型不能为空")
     private String reportType;
 
     private String deviceToken;

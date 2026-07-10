@@ -5,7 +5,7 @@ import lombok.Data;
 
 @Data
 public class WechatUpdateRequest {
-    @NotBlank(message = "报告编号不能为空")
+    @NotBlank(message = "内容编号不能为空")
     private String reportUid;
 
     @NotBlank(message = "微信号不能为空")

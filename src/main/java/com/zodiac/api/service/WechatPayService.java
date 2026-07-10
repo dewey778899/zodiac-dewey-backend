@@ -99,6 +99,9 @@ public class WechatPayService {
 
     public String exchangeOpenid(String code) {
         if (!config.isEnabled()) {
+            if (paymentProperties.isDevMockEnabled()) {
+                return "mock-openid-" + (isBlank(code) ? "anonymous" : code);
+            }
             throw new PaymentException("wechat_disabled", "微信支付未开启", HttpStatus.SERVICE_UNAVAILABLE);
         }
         ensureConfigured();
@@ -192,6 +195,27 @@ public class WechatPayService {
             throw ex;
         } catch (Exception ex) {
             throw new PaymentException("wechat_callback_decrypt_failed", "微信回调解密失败", HttpStatus.BAD_REQUEST);
+        }
+    }
+
+    public Map<String, Object> queryOrderByOutTradeNo(String outTradeNo) {
+        if (!config.isEnabled()) {
+            if (paymentProperties.isDevMockEnabled()) {
+                return Map.of("trade_state", "NOTPAY", "out_trade_no", outTradeNo);
+            }
+            throw new PaymentException("wechat_disabled", "微信支付未开启", HttpStatus.SERVICE_UNAVAILABLE);
+        }
+        ensureConfigured();
+        try {
+            String path = QUERY_ORDER_PATH_TEMPLATE
+                    .replace("{out_trade_no}", urlEncode(outTradeNo))
+                    .replace("{mchid}", urlEncode(config.getMchId()));
+            return getWechatApi(path);
+        } catch (PaymentException ex) {
+            throw ex;
+        } catch (Exception ex) {
+            log.warn("Wechat query order failed: outTradeNo={}", outTradeNo, ex);
+            throw new PaymentException("wechat_query_failed", "微信订单查询失败", HttpStatus.BAD_GATEWAY);
         }
     }
 
@@ -383,6 +407,38 @@ public class WechatPayService {
         }
         if (!response.getStatusCode().is2xxSuccessful()) {
             log.error("Wechat pay HTTP error: path={}, status={}, body={}", path, response.getStatusCode(), response.getBody());
+            throw new PaymentException("wechat_http_failed", "微信支付请求失败: " + response.getBody(), HttpStatus.BAD_GATEWAY);
+        }
+        return objectMapper.readValue(response.getBody(), new TypeReference<Map<String, Object>>() {});
+    }
+
+    private Map<String, Object> getWechatApi(String path) throws Exception {
+        String nonceStr = randomNonce();
+        String timestamp = String.valueOf(Instant.now().getEpochSecond());
+        String message = "GET\n" + path + "\n" + timestamp + "\n" + nonceStr + "\n\n";
+        String signature = sign(message, loadMerchantPrivateKey());
+        String authorization = AUTH_SCHEME
+                + " mchid=\"" + config.getMchId() + "\","
+                + "nonce_str=\"" + nonceStr + "\","
+                + "timestamp=\"" + timestamp + "\","
+                + "serial_no=\"" + config.getMchSerialNo() + "\","
+                + "signature=\"" + signature + "\"";
+
+        ResponseEntity<String> response = WebClient.builder()
+                .baseUrl(API_BASE_URL)
+                .defaultHeader(HttpHeaders.ACCEPT, MediaType.APPLICATION_JSON_VALUE)
+                .defaultHeader(HttpHeaders.USER_AGENT, USER_AGENT)
+                .defaultHeader(HttpHeaders.AUTHORIZATION, authorization)
+                .build()
+                .get()
+                .uri(path)
+                .exchangeToMono(resp -> resp.toEntity(String.class))
+                .block();
+        if (response == null || response.getBody() == null || response.getBody().isBlank()) {
+            throw new PaymentException("wechat_empty_response", "微信支付返回为空", HttpStatus.BAD_GATEWAY);
+        }
+        if (!response.getStatusCode().is2xxSuccessful()) {
+            log.warn("Wechat query HTTP error: path={}, status={}, body={}", path, response.getStatusCode(), response.getBody());
             throw new PaymentException("wechat_http_failed", "微信支付请求失败: " + response.getBody(), HttpStatus.BAD_GATEWAY);
         }
         return objectMapper.readValue(response.getBody(), new TypeReference<Map<String, Object>>() {});

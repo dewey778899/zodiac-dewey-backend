@@ -13,7 +13,7 @@ public class PaymentCreateOrderRequest {
     @NotBlank(message = "支付场景不能为空")
     private String scene;
 
-    @NotBlank(message = "报告类型不能为空")
+    @NotBlank(message = "内容类型不能为空")
     private String reportType;
 
     @NotNull(message = "支付金额不能为空")

@@ -20,14 +20,14 @@ public class CompatibilityRequest {
     @Valid
     private Person personB;
 
-    /** 选择的模型: "deepseek" 或 "claude"(深度解析 / Opus 4.7), 默认 "deepseek" */
+    /** 选择的模型: "deepseek" 或 "claude"(扩展内容 / Opus 4.7), 默认 "deepseek" */
     @Pattern(regexp = "^(deepseek|claude)$", message = "不支持的模型类型")
     private String model;
 
-    /** 报告主题: love / career / wealth, 默认 love */
+    /** 内容主题: love / career / wealth, 默认 love */
     private String reportType;
 
-    /** 付费深度解析的一次性访问凭证 */
+    /** 付费扩展内容的一次性访问凭证 */
     private String accessToken;
 
     @Data

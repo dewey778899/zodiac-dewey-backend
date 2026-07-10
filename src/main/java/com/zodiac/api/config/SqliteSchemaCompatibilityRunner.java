@@ -26,6 +26,18 @@ public class SqliteSchemaCompatibilityRunner implements ApplicationRunner {
         ensureColumn("pay_order", "trade_type", "VARCHAR(20)");
         ensureColumn("pay_order", "subject", "VARCHAR(255)");
         ensureColumn("pay_order", "amount_fen", "INTEGER");
+        ensureColumn("pay_order", "scene_code", "VARCHAR(30)");
+        ensureColumn("pay_order", "client_ip", "VARCHAR(64)");
+        ensureColumn("pay_order", "return_url", "VARCHAR(1000)");
+        ensureColumn("pay_order", "wechat_prepay_id", "VARCHAR(128)");
+        ensureColumn("pay_order", "wechat_mweb_url", "VARCHAR(1000)");
+        ensureColumn("pay_order", "wechat_code_url", "VARCHAR(1000)");
+        ensureColumn("pay_order", "alipay_trade_no", "VARCHAR(128)");
+        ensureColumn("pay_order", "alipay_pay_url", "VARCHAR(2000)");
+        ensureColumn("pay_order", "notify_type", "VARCHAR(32)");
+        ensureColumn("pay_order", "notify_verified", "BOOLEAN");
+        ensureColumn("pay_order", "notify_raw", "TEXT");
+        ensureColumn("pay_order", "attach_payload", "TEXT");
         ensureColumn("pay_order", "referral_user_id", "BIGINT");
         ensureColumn("pay_order", "referral_settled", "BOOLEAN DEFAULT 0");
         ensureColumn("pay_order", "unlock_status", "VARCHAR(32) DEFAULT 'LOCKED'");

@@ -145,7 +145,7 @@ public class AiChatService {
         if (apiKey == null || apiKey.isBlank()) {
             throw new AiServiceException(
                     AiServiceException.Reason.MISCONFIGURED,
-                    "AI_API_KEY / DEEPSEEK_API_KEY 未配置，无法生成报告。"
+                    "AI_API_KEY / DEEPSEEK_API_KEY 未配置，无法生成内容。"
             );
         }
         return executeWithRetry(
@@ -195,7 +195,7 @@ public class AiChatService {
         if (claudeApiKey == null || claudeApiKey.isBlank()) {
             throw new AiServiceException(
                     AiServiceException.Reason.MISCONFIGURED,
-                    "CLAUDE_API_KEY 未配置，无法使用深度解析模型。"
+                    "CLAUDE_API_KEY 未配置，无法使用扩展内容模型。"
             );
         }
         return executeWithRetry(

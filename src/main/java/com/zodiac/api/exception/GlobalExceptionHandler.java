@@ -41,6 +41,15 @@ public class GlobalExceptionHandler {
         ));
     }
 
+    @ExceptionHandler(PaymentException.class)
+    public ResponseEntity<?> payment(PaymentException e) {
+        HttpStatus status = e.getStatus() == null ? HttpStatus.BAD_REQUEST : e.getStatus();
+        return ResponseEntity.status(status).body(Map.of(
+                "error", e.getErrorCode(),
+                "message", e.getMessage()
+        ));
+    }
+
     @ExceptionHandler(Exception.class)
     public ResponseEntity<?> generic(Exception e) {
         log.error("未处理异常", e);

@@ -69,7 +69,7 @@ public class CompatibilityController {
             rateLimitService.rollback(ip, request.getModel());
             return ResponseEntity.status(403).body(Map.of(
                     "error", "payment_required",
-                    "message", "深度解析需要有效且未使用的支付凭证"
+                    "message", "扩展内容需要有效且未使用的支付凭证"
             ));
         }
 
@@ -82,16 +82,16 @@ public class CompatibilityController {
             rateLimitService.rollback(ip, request.getModel());
             return ResponseEntity.status(503).body(Map.of(
                     "error", "ai_service_failed",
-                    "message", e.getMessage() != null ? e.getMessage() : "AI 生成失败，请稍后重试",
+                    "message", e.getMessage() != null ? e.getMessage() : "内容生成失败，请稍后重试",
                     "reason", e.getReason().name(),
-                    "refundHint", premium ? "当前是付费深度解析，如已支付请联系人工处理异常订单" : ""
+                    "refundHint", premium ? "当前为付费查看内容，如已支付请联系人工处理异常订单" : ""
             ));
         } catch (Exception e) {
             log.error("Report generation failed, rolling back rate-limit counter", e);
             rateLimitService.rollback(ip, request.getModel());
             return ResponseEntity.status(500).body(Map.of(
                     "error", "generation_failed",
-                    "message", e.getMessage() != null ? e.getMessage() : "生成失败"
+                    "message", e.getMessage() != null ? e.getMessage() : "内容生成失败"
             ));
         }
     }
@@ -112,7 +112,7 @@ public class CompatibilityController {
         }
         return ResponseEntity.status(404).body(Map.of(
                 "error", "not_found",
-                "message", "报告编号不存在"
+                "message", "内容编号不存在"
         ));
     }
 
@@ -130,7 +130,7 @@ public class CompatibilityController {
         }
         return ResponseEntity.status(404).body(Map.of(
                 "error", "not_found",
-                "message", "该报告不存在或已过期"
+                "message", "该内容不存在或已过期"
         ));
     }
 
@@ -140,7 +140,7 @@ public class CompatibilityController {
                 || reportType.isBlank()
                 || CompatibilityRequest.REPORT_TYPE_LOVE.equalsIgnoreCase(reportType);
         if (isLove && request.getPersonB() == null) {
-            return "爱情合盘需要提供 TA 的信息";
+            return "双人关系主题需要提供 TA 的信息";
         }
         if (isLove
                 && request.getPersonA() != null
@@ -148,12 +148,12 @@ public class CompatibilityController {
                 && request.getPersonA().getGender() != null
                 && request.getPersonB().getGender() != null
                 && request.getPersonA().getGender().equalsIgnoreCase(request.getPersonB().getGender())) {
-            return "爱情合盘暂不支持同一性别组合，请选择一男一女";
+            return "双人关系主题暂不支持同一性别组合，请选择一男一女";
         }
         if (!isLove
                 && !CompatibilityRequest.REPORT_TYPE_CAREER.equalsIgnoreCase(reportType)
                 && !CompatibilityRequest.REPORT_TYPE_WEALTH.equalsIgnoreCase(reportType)) {
-            return "不支持的报告类型";
+            return "不支持的内容类型";
         }
         return null;
     }

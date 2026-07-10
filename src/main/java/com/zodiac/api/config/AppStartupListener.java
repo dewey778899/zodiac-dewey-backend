@@ -16,7 +16,7 @@ public class AppStartupListener {
 
     @EventListener(ApplicationReadyEvent.class)
     public void onReady() {
-        log.info("===== 小登哥灵魂合盘 API 启动完成 =====");
+        log.info("===== 小登哥内容服务 API 启动完成 =====");
         rateLimitService.syncFromDatabase();
     }
 }

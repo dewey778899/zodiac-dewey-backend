@@ -89,6 +89,21 @@ public class PayOrder {
     @Column(name = "wechat_code_url", length = 1000)
     private String wechatCodeUrl;
 
+    @Column(name = "alipay_trade_no", length = 128)
+    private String alipayTradeNo;
+
+    @Column(name = "alipay_pay_url", length = 2000)
+    private String alipayPayUrl;
+
+    @Column(name = "notify_type", length = 32)
+    private String notifyType;
+
+    @Column(name = "notify_verified")
+    private Boolean notifyVerified;
+
+    @Column(name = "notify_raw", columnDefinition = "TEXT")
+    private String notifyRaw;
+
     @Column(name = "attach_payload", columnDefinition = "TEXT")
     private String attachPayload;
 

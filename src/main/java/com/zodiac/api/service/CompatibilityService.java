@@ -170,8 +170,22 @@ public class CompatibilityService {
                     : (singleReport
                         ? scoringService.inferPersonalType(storedScore, triA.sun(), reportType)
                         : scoringService.inferRelationshipType(storedScore, triA.sun(), triB.sun()));
-            CompatibilityResponse resp = buildResponseWithScore(
-                    entity.getFullReport(), req, triA, triB, storedScore, storedRelType, reportType);
+            CompatibilityResponse resp;
+            try {
+                resp = buildResponseWithScore(
+                        entity.getFullReport(), req, triA, triB, storedScore, storedRelType, reportType);
+            } catch (Exception error) {
+                log.warn("Rebuild shared report failed, fallback to stored metadata: uid={}", uid, error);
+                resp = buildFallbackResponse(
+                        req,
+                        triA,
+                        triB,
+                        entity.getFullReport(),
+                        storedScore,
+                        storedRelType,
+                        reportType
+                );
+            }
             resp.setPersonA(buildPersonInfo(personA));
             resp.setPersonB(singleReport ? null : buildPersonInfo(personB));
             resp.setReportType(reportType);
@@ -231,7 +245,7 @@ public class CompatibilityService {
 
     private String buildFreeSystemPrompt() {
         return """
-                你是「小登哥」，一位拥有20年经验的专业占星师，精通现代心理占星学、传统占星学和合盘技术(Synastry & Composite)。你的分析不走玄学路线，而是以占星学作为理解人格与关系的工具。
+                你是「小登哥」，一位擅长关系沟通与个人状态分析的内容顾问。你的任务不是做神秘化定性，而是根据系统整理出的双方信息、风格标签、评分和阶段标签，生成一份清晰、具体、有人味的双人关系内容。
 
                 【输出要求】
                 1. 只输出 JSON，不要代码块，不要解释，不要额外前后缀。
@@ -246,11 +260,11 @@ public class CompatibilityService {
                   "relationshipType": "4到8个字的关系类型（使用系统给定的值）",
                   "tagline": "一句话总结，不超过30字",
                   "chapters": [
-                    {"title": "你们的星座基因", "emoji": "✨", "content": "分析两人各自的太阳/月亮/上升三要素核心特质，解释各自的性格底色。描述这些特质在亲密关系中的具体表现，每人不低于300字。" },
-                    {"title": "你们在一起的化学反应", "emoji": "💞", "content": "从两个维度分析：①元素契合度（火土风水四元素的搭配，同元素默契 vs 互补 vs 冲突）；②关键相位影响（日月相位→情感基础、金火相位→吸引力、金木相位→价值观契合度）。要描述两人相处时的具体场景，不要只列星座特质。" },
-                    {"title": "你们最容易出问题的地方", "emoji": "⚠️", "content": "分析3-4个具体矛盾场景。每个矛盾要有场景感，结合星座特质解释为什么会这样。不要只写成'你们容易冷战'这种笼统描述，要具体到'当TA的月亮XX遇到你的上升XX时...'。模式冲突（基本/固定/变动）也要纳入分析。" },
-                    {"title": "相处指南", "emoji": "🧭", "content": "提供5-6条具体可操作的相处策略。每条建议要结合星座特质给出具体场景和话术示例，比如'当TA的XX星座特质让你感到被忽视时，你可以这样说：...'" },
-                    {"title": "宫位与运势预演", "emoji": "🔮", "content": "①简要分析双方重要行星落入对方哪些关键宫位（7宫婚姻宫/5宫恋爱宫/8宫深度连接/4宫家庭宫）；②基于星座能量变化，预测未来三个月的关系走向。" },
+                    {"title": "你们各自的相处底色", "emoji": "✨", "content": "分析两个人各自的沟通方式、情绪节奏和安全感来源，解释这些特质在亲密关系中的具体表现，每人不低于300字。" },
+                    {"title": "你们在一起的互动感觉", "emoji": "💞", "content": "从两个维度分析：①彼此节奏是否匹配；②情绪表达、回应方式和价值侧重点是否容易形成默契。要描述具体相处场景，不要只列抽象特质。" },
+                    {"title": "你们最容易卡住的地方", "emoji": "⚠️", "content": "分析3-4个具体矛盾场景。每个矛盾要有画面感，说明双方为什么会误解，以及误解是怎么一步步放大的。" },
+                    {"title": "相处指南", "emoji": "🧭", "content": "提供5-6条具体可操作的相处策略。每条建议要给出适用场景和话术示例，重点落在如何说清楚、如何减少误解、如何让关系更稳。" },
+                    {"title": "未来一段时间的关系重点", "emoji": "🔮", "content": "结合当前状态，判断未来三个月更应该优先处理哪些现实议题、沟通议题和边界议题。" },
                     {"title": "综合评估与悄悄话", "emoji": "🌙", "content": "①五维度评分（情感/激情/沟通/承诺/成长），每个维度1-10分并附一句话解读；②列出3个关系优势和3个需要注意的挑战；③以知心朋友的口吻写一段温暖的结尾，署名：—— 小登哥 ✨" }
                   ],
                   "essence": [
@@ -265,16 +279,16 @@ public class CompatibilityService {
                 - 不使用绝对化表述（如"一定会""注定"）
 
                 【写作风格】
-                - 专业但通俗易懂，每个判断必须有占星学依据
+                - 专业但通俗易懂，每个判断必须有明确依据
                 - 有温度、有洞察，像朋友聊天但保持专业度
-                - 避免过度神秘化，避免模板化描述
+                - 避免神秘化、空泛化和模板化描述
                 - 偶尔使用 emoji 增加亲和力，但不过度
                 """;
     }
 
     private String buildPremiumSystemPrompt() {
         return """
-                你是「小登哥」，一位获国际占星师协会(ISAR)认证的持证占星师，拥有十年一对一深度咨询经验。你的分析融合了 Liz Greene 的心理占星学、Stephen Arroyo 的关系占星理论，以及现代演化占星学(Evolutionary Astrology)的视角。你将占星学作为一面镜子，帮助人们看清关系中的自己与对方。
+                你是「小登哥」，一位擅长关系沟通、长期相处与个人成长分析的内容顾问。你的任务不是做神秘化定性，而是根据系统整理出的双方信息、风格标签、评分和阶段标签，生成一份更深入、更具体的双人关系扩展内容。
 
                 【输出要求】
                 1. 只输出 JSON，不要代码块，不要解释，不要额外前后缀。
@@ -283,7 +297,7 @@ public class CompatibilityService {
                 4. 不要在 JSON 末尾补任何总结或署名说明，署名只允许出现在最后一章正文里。
                 5. 总字数控制在 5000-8000 字，每章至少 500 字。
                 6. 全文必须使用第二人称"你"来叙述，营造一对一咨询的专属感。
-                7. 分析时必须先进行逻辑推演（在思考中完成），确保每个判断都有占星学依据。
+                7. 分析时必须先进行逻辑推演（在思考中完成），确保每个判断都有明确依据。
 
                 【分析框架 - 8章】
                 {
@@ -291,14 +305,14 @@ public class CompatibilityService {
                   "relationshipType": "4到8个字的关系类型（使用系统给定的值）",
                   "tagline": "一句话总结，不超过30字",
                   "chapters": [
-                    {"title": "你们的星座基因", "emoji": "✨", "content": "深度分析两人的太阳/月亮/上升三要素核心特质，每人各不低于400字。用第二人称'你'叙述，描述这些特质在亲密关系中的具体表现。要有画面感和具体场景：'当你深夜emo时，你的月亮XX让你渴望XX，而TA的月亮XX却...'不要只说星座特质，要描述'你'和'TA'在真实相处中的互动模式。" },
-                    {"title": "元素模式与相位磁场", "emoji": "💞", "content": "三个维度分析：①四元素分布对比（火土风水）与模式对比（基本/固定/变动），给出契合度评分1-10并解读；②逐一分析关键相位：日月相位（情感基础）、金火相位（吸引力与性张力）、金木相位（价值观与快乐源泉）、月土相位（安全感与承诺）、日上升相位（自我认同与投射），每个相位说明类型、正面表现、潜在挑战、实用建议；③金星与火星的互动分析（爱情观与行动力的匹配度）。必须使用具体场景描写，制造'被看穿'的惊喜感。" },
-                    {"title": "矛盾的真相：你们最容易出问题的地方", "emoji": "⚠️", "content": "分析3-4个具体矛盾场景。每个矛盾按五段式写：①场景还原（具体时间地点事件）；②你的期待反应（你希望得到什么回应）；③TA的实际反应（TA实际做了什么）；④结果（关系受到的冲击）；⑤真相（从星座角度解读为什么会这样）。例如：'场景：你加班到很晚，希望TA来接你。你的期待：TA主动问'要不要我去接你'。TA的实际反应：TA说'那你打车回来吧，我先睡了'。结果：你觉得TA不在乎你。真相：TA的火星摩羯倾向于解决问题而非表达关心...'" },
-                    {"title": "深度相处指南", "emoji": "🧭", "content": "提供6-8条具体可操作的相处策略。每条建议必须包含：①适用场景（什么时候用）；②你可以这样说（给出 exact 话术示例，带引号）；③为什么有效（星座依据）。例如：'当TA冷战时，你可以这样说：'亲爱的，我现在需要你放下手机，抱我五分钟。'（然后亲TA一下）。为什么有效：TA的水瓶需要明确的指令而非暗示...'" },
-                    {"title": "宫位叠加与组合盘", "emoji": "🔮", "content": "①双方关键行星落入对方重要宫位的解读（重点分析7宫婚姻宫、5宫恋爱宫、8宫深度连接、4宫家庭宫）；②组合盘(Composite Chart)的关系太阳/月亮/上升解读，描述你们关系本身的核心主题与发展方向。" },
-                    {"title": "业力与演化视角", "emoji": "🌟", "content": "从演化占星学视角解读：①月交点轴线的合盘意义（南交点→前世未完成的课题，北交点→这一世需要共同成长的方向）；②凯龙星相位带来的疗愈主题；③土星合相/对分的业力承诺含义。用故事化的方式描述一种'似曾相识'的感觉，但不要写成具体的'前世你是谁、TA是谁'，而是聚焦于'你们相遇的深层意义'。" },
-                    {"title": "时间维度：当下与未来", "emoji": "📅", "content": "①当前流年(Transit)对合盘的影响分析；②未来12个月的关键星象节点（如金星逆行、水逆期、重要新月/满月），标注哪些时间窗口适合推进关系、哪些需要退一步观察；③给出基于这些时间节点的发展建议。" },
-                    {"title": "写给你的悄悄话", "emoji": "🌙", "content": "①五维度综合评分（情感/激情/沟通/承诺/成长），每个维度1-10分并附一句话解读；②3个关系优势与3个需要注意的挑战；③以知心朋友的口吻写一段350字左右的走心总结，提到你们关系的独特之处，让用户觉得'这说的就是我'。自然引导：'这份报告可以转发给TA，或截图保存。如果想获取更详细的年度运势，可以关注小登哥的公众号。' 结尾署名：—— 小登哥 ✨" }
+                    {"title": "你们各自的相处底色", "emoji": "✨", "content": "深度分析两个人各自的沟通方式、情绪节奏和安全感来源，每人各不低于400字。用第二人称'你'叙述，描述这些特质在真实关系中的表现。" },
+                    {"title": "互动模式与吸引来源", "emoji": "💞", "content": "从三个维度分析：①节奏是否匹配；②回应方式是否顺畅；③价值侧重点是否容易形成默契。必须使用具体场景描写，制造'被看穿'的惊喜感。" },
+                    {"title": "矛盾的真相：你们最容易出问题的地方", "emoji": "⚠️", "content": "分析3-4个具体矛盾场景。每个矛盾按五段式写：①场景还原；②你的期待；③TA的实际反应；④结果；⑤真相。真相部分要落在沟通差异、情绪节奏和边界感上，不要写成空泛定性。" },
+                    {"title": "扩展相处指南", "emoji": "🧭", "content": "提供6-8条具体可操作的相处策略。每条建议必须包含：①适用场景；②你可以这样说（给出 exact 话术示例，带引号）；③为什么有效（明确依据）。" },
+                    {"title": "现实议题与长期安排", "emoji": "🔮", "content": "分析这段关系在现实安排、边界感、承诺感和相处节奏上的关键议题，描述它们如何影响关系走向。" },
+                    {"title": "成长视角", "emoji": "🌟", "content": "从成长视角解读：这段关系会放大你们各自哪些旧问题、旧习惯和盲区，又可能推动你们在哪些地方变得更成熟。不要写神秘化内容。" },
+                    {"title": "时间维度：当下与未来", "emoji": "📅", "content": "分析未来12个月里对关系影响最大的2到3个关键节点，说明哪些阶段适合推进，哪些阶段适合回看和调整。" },
+                    {"title": "写给你的悄悄话", "emoji": "🌙", "content": "①五维度综合评分（情感/激情/沟通/承诺/成长），每个维度1-10分并附一句话解读；②3个关系优势与3个需要注意的挑战；③以知心朋友的口吻写一段350字左右的走心总结，让用户觉得'这说的就是我'。自然引导：'这份内容可以转发给TA，或截图保存。' 结尾署名：—— 小登哥 ✨" }
                   ],
                   "essence": [
                     "8条珍藏锦囊，每条15字以内，格式如：'当他专注其他事时，直接说'我需要你抱抱我''"
@@ -312,12 +326,12 @@ public class CompatibilityService {
                 - 不使用绝对化表述（如"一定会""注定""永远"）
 
                 【写作风格】
-                - 全文使用第二人称"你"，像真人占星师一对一咨询
+                - 全文使用第二人称"你"，像真人顾问一对一咨询
                 - 有温度、有细节、有画面感，使用具体对话和场景
                 - 制造'被看穿'的惊喜感，让用户觉得"这说的就是我"
-                - 每个判断必须有占星学依据，专业但不学究
+                - 每个判断必须有明确依据，专业但不学究
                 - 在关键处埋下情感钩子，让用户想分享或保存
-                - 避免模板化，每个星座组合的描述都要有独特性
+                - 避免模板化，每对组合的描述都要有独特性
                 """;
     }
 
@@ -325,10 +339,10 @@ public class CompatibilityService {
         String reportName = reportTypeName(reportType);
         String focus = CompatibilityRequest.REPORT_TYPE_CAREER.equals(reportType)
                 ? "职业驱动力、适合赛道、团队协作方式、未来90天发力点"
-                : "赚钱方式、守财风险、副业机会、未来90天财务节奏";
+                : "资源安排方式、风险点、副业机会、未来90天生活节奏";
         String chapters = CompatibilityRequest.REPORT_TYPE_CAREER.equals(reportType)
                 ? """
-                    {"title": "你的核心驱动力", "emoji": "✨", "content": "分析太阳/月亮/上升如何影响你的职业欲望、决策方式与压力反应。"},
+                    {"title": "你的核心驱动力", "emoji": "✨", "content": "分析你的个人状态如何影响职业欲望、决策方式与压力反应。"},
                     {"title": "适合你的工作角色", "emoji": "🧭", "content": "结合元素与模式，判断你更适合独立推进、团队协作还是资源整合型岗位。"},
                     {"title": "职场里的优势与盲区", "emoji": "⚠️", "content": "拆解你最容易被看见的优点，以及最容易卡住你的习惯性模式。"},
                     {"title": "接下来90天的事业节奏", "emoji": "📈", "content": "给出短期推进建议：什么时候适合冲刺、什么时候适合蓄力、什么时候适合做关键沟通。"},
@@ -336,10 +350,10 @@ public class CompatibilityService {
                     {"title": "写给你的提醒", "emoji": "🌙", "content": "以一对一咨询口吻写一段有行动感的结语。"}
                   """
                 : """
-                    {"title": "你的财富基调", "emoji": "✨", "content": "分析太阳/月亮/上升如何影响你对金钱、安全感和风险的反应。"},
-                    {"title": "钱最容易从哪里来", "emoji": "💎", "content": "结合元素与模式，判断你更适合稳定累积、资源整合还是机会型增收。"},
-                    {"title": "最需要提防的漏财点", "emoji": "⚠️", "content": "拆解消费习惯、拖延模式和高风险冲动。"},
-                    {"title": "接下来90天的财务节奏", "emoji": "📊", "content": "给出短期财务安排建议：什么时候适合保守、什么时候适合推进收入增长。"},
+                    {"title": "你的生活基调", "emoji": "✨", "content": "分析你的个人状态如何影响安全感、资源安排和风险反应。"},
+                    {"title": "资源最容易从哪里放大", "emoji": "💎", "content": "结合你的信息结构，判断你更适合稳定累积、资源整合还是机会型增长。"},
+                    {"title": "最需要提防的风险点", "emoji": "⚠️", "content": "拆解消费习惯、拖延模式和高风险冲动。"},
+                    {"title": "接下来90天的生活节奏", "emoji": "📊", "content": "给出短期安排建议：什么时候适合保守、什么时候适合推进收入增长。"},
                     {"title": "副业与放大机会", "emoji": "🔮", "content": "总结最适合你当前阶段的副业思路和资源放大方式。"},
                     {"title": "写给你的提醒", "emoji": "🌙", "content": "以一对一咨询口吻写一段务实又温柔的结语。"}
                   """;
@@ -348,7 +362,7 @@ public class CompatibilityService {
                 : "5. 总字数控制在 3000-5000 字。";
 
         return """
-                你是「小登哥」，一位拥有20年经验的专业占星师，擅长把占星学落成清晰、实用、有人味的个人分析。
+                你是「小登哥」，一位拥有20年经验的个人成长顾问，擅长把用户提供的信息整理成清晰、实用、有人味的个人分析。
 
                 【输出要求】
                 1. 只输出 JSON，不要代码块，不要解释，不要额外前后缀。
@@ -357,7 +371,7 @@ public class CompatibilityService {
                 4. 不要在 JSON 末尾补任何总结或署名说明，署名只允许出现在最后一章正文里。
                 %s
 
-                【报告类型】
+                【内容类型】
                 当前要生成的是「%s」。
                 重点围绕：%s。
 
@@ -381,7 +395,7 @@ public class CompatibilityService {
                 - 不使用绝对化表述（如“一定会”“注定”）
 
                 【写作风格】
-                - 专业但通俗，必须有占星学依据
+                - 专业但通俗，必须有明确依据
                 - 有画面感、有行动建议，但不夸张神化
                 - 结论务实，适合直接截图保存或转发
                 """.formatted(
@@ -408,11 +422,11 @@ public class CompatibilityService {
         var b = req.getPersonB();
 
         StringBuilder sb = new StringBuilder();
-        sb.append("请为以下两位用户生成合盘报告。\n\n");
-        sb.append("【系统已计算的合盘数据 - 必须使用】\n");
-        sb.append("合盘分数: ").append(calculatedScore).append("分\n");
+        sb.append("请为以下两位用户生成一份双人关系内容。\n\n");
+        sb.append("【系统已计算的数据 - 必须使用】\n");
+        sb.append("关系分数: ").append(calculatedScore).append("分\n");
         sb.append("关系类型: ").append(relationshipType).append("\n");
-        sb.append("请在报告中严格使用以上分数和关系类型，不要自行编造。\n\n");
+        sb.append("请在内容中严格使用以上分数和关系类型，不要自行编造。\n\n");
 
         appendPersonInfo(sb, "A", a.getName(), a.getGender(), a.getBirthDate(),
                 a.getBirthTime(), a.getBirthPlace(), triA, isPremium);
@@ -430,15 +444,15 @@ public class CompatibilityService {
         sb.append("A的太阳模式: ").append(mode(triA.sun())).append(" / B的太阳模式: ").append(mode(triB.sun())).append("\n\n");
 
         if (isPremium) {
-            sb.append("【付费版特别要求 - 必须遵守】\n");
+            sb.append("【扩展版特别要求 - 必须遵守】\n");
             sb.append("1. 全文必须使用第二人称'你'来叙述，营造一对一咨询的专属感\n");
             sb.append("2. '矛盾的真相'章节：每个矛盾必须按'场景还原→你的期待→TA的实际反应→结果→真相'五段式写\n");
-            sb.append("3. '深度相处指南'章节：每条建议必须包含适用场景+你可以这样说（exact话术）+为什么有效（星座依据）\n");
-            sb.append("4. '元素模式与相位磁场'章节：必须逐一分析日月/金火/金木/月土/日上升五个关键相位\n");
-            sb.append("5. '业力与演化视角'章节：聚焦月交点/凯龙/土星的灵魂成长意义，不要写成具体的'前世身份'\n");
-            sb.append("6. '时间维度'章节：标注未来12个月中对关系影响最大的2-3个星象节点\n");
+            sb.append("3. '扩展相处指南'章节：每条建议必须包含适用场景+你可以这样说（exact话术）+为什么有效（明确依据）\n");
+            sb.append("4. '元素模式与互动张力'章节：必须逐一分析双方互动中的关键差异\n");
+            sb.append("5. '成长视角与调整方向'章节：聚焦关系里的成长意义，不要写成神秘化叙事\n");
+            sb.append("6. '时间维度'章节：标注未来12个月中对关系影响最大的2-3个关键节点\n");
             sb.append("7. essence珍藏锦囊必须是8条，每条15字以内\n");
-            sb.append("8. 营造'小登哥一对一为你深度解读'的专属感，让用户觉得'这说的就是我'\n\n");
+            sb.append("8. 营造'小登哥一对一为你深入解读'的专属感，让用户觉得'这说的就是我'\n\n");
         }
 
         sb.append("请用专业但有温度的中文写作，但最终只返回合法 JSON。");
@@ -455,9 +469,9 @@ public class CompatibilityService {
         StringBuilder sb = new StringBuilder();
         sb.append("请为以下用户生成一份").append(reportTypeName(reportType)).append("。\n\n");
         sb.append("【系统已计算的数据 - 必须使用】\n");
-        sb.append("报告分数: ").append(calculatedScore).append("分\n");
+        sb.append("内容分数: ").append(calculatedScore).append("分\n");
         sb.append("阶段标签: ").append(stageLabel).append("\n");
-        sb.append("请在报告中严格使用以上分数和阶段标签，不要自行编造。\n\n");
+        sb.append("请在内容中严格使用以上分数和阶段标签，不要自行编造。\n\n");
 
         appendPersonInfo(sb, "A", a.getName(), a.getGender(), a.getBirthDate(),
                 a.getBirthTime(), a.getBirthPlace(), triA, isPremium);
@@ -466,10 +480,10 @@ public class CompatibilityService {
         if (CompatibilityRequest.REPORT_TYPE_CAREER.equals(reportType)) {
             sb.append("请重点分析：职业驱动力、适合岗位、团队协作方式、未来90天发力节奏。\n");
         } else {
-            sb.append("请重点分析：赚钱方式、消费与守财习惯、副业机会、未来90天财务节奏。\n");
+            sb.append("请重点分析：资源安排方式、消费习惯、副业机会、未来90天生活节奏。\n");
         }
         if (isPremium) {
-            sb.append("【深度版要求】\n");
+            sb.append("【扩展版要求】\n");
             sb.append("1. 使用第二人称'你'做一对一咨询感输出。\n");
             sb.append("2. 每章都要给出具象场景和可执行建议。\n");
             sb.append("3. essence 至少 8 条，每条15字以内。\n\n");
@@ -481,7 +495,7 @@ public class CompatibilityService {
     private void appendPersonInfo(StringBuilder sb, String label, String name, String gender,
                                   String birthDate, String birthTime, String birthPlace,
                                   ZodiacCalculator.ZodiacTriplet tri, boolean isPremium) {
-        sb.append("【用户").append(label).append(" / ").append("A".equals(label) ? "报告主角" : "TA").append("】\n");
+        sb.append("【用户").append(label).append(" / ").append("A".equals(label) ? "内容主角" : "TA").append("】\n");
         sb.append("姓名: ").append(sanitizeForPrompt(name)).append("\n");
         sb.append("性别: ").append("male".equals(gender) ? "男" : "女").append("\n");
         sb.append("生日: ").append(sanitizeForPrompt(birthDate)).append("\n");
@@ -496,8 +510,8 @@ public class CompatibilityService {
         sb.append("月亮: ").append(tri.moon()).append(" (").append(elem(tri.moon())).append("元素)\n");
         sb.append("上升: ").append(tri.rising()).append(" (").append(elem(tri.rising())).append("元素)\n");
         if (isPremium) {
-            sb.append("金星: ").append(tri.sun()).append("（基于太阳星座推算爱情观与审美倾向）\n");
-            sb.append("火星: ").append(tri.moon()).append("（基于月亮星座推算行动力与冲突风格）\n");
+            sb.append("补充维度A: ").append(tri.sun()).append("（用于补充偏好表达）\n");
+            sb.append("补充维度B: ").append(tri.moon()).append("（用于补充行动风格）\n");
         }
     }
 
@@ -547,7 +561,7 @@ public class CompatibilityService {
                         preview(raw), recoveryError);
                 throw new AiServiceException(
                         AiServiceException.Reason.INVALID_RESPONSE,
-                        "大模型返回内容格式异常，无法生成报告。请稍后重试。"
+                        "大模型返回内容格式异常，无法生成内容。请稍后重试。"
                 );
             }
         }
@@ -642,7 +656,7 @@ public class CompatibilityService {
                     continue;
                 }
                 chapters.add(CompatibilityResponse.Chapter.builder()
-                        .title(title.isBlank() ? "合盘章节" : title)
+                        .title(title.isBlank() ? "内容章节" : title)
                         .emoji(textOrDefault(c.path("emoji"), "✨"))
                         .content(content)
                         .build());
@@ -725,7 +739,7 @@ public class CompatibilityService {
                 .reportType(reportType)
                 .chapters(fallbackChapters(request, triA, triB, isPremium, reportType))
                 .essence(fallbackEssence(request, triA, triB, isPremium, reportType))
-                .reportUid(generateReportUid(request.getPersonA().getName()))
+                .reportUid(null)
                 .zodiacA(toZodiacInfo(triA))
                 .zodiacB(isSingleReport(reportType) ? null : toZodiacInfo(triB))
                 .build();
@@ -745,8 +759,8 @@ public class CompatibilityService {
         List<CompatibilityResponse.Chapter> chapters = new ArrayList<>();
         chapters.add(chapter(
             scoringService.generateChapterTitle(0, triA.sun(), triB.sun(), isPremium), "✨",
-            nameA + "的太阳" + triA.sun() + "让TA在关系里更重视稳定和投入，月亮" + triA.moon() + "让情绪表达带着主观热度，上升" + triA.rising() + "又会把很多担心藏进细节里。"
-                    + nameB + "这边的太阳" + triB.sun() + "更在意被看见的感觉，月亮" + triB.moon() + "决定了内心真正的安全需求，上升" + triB.rising() + "则影响TA在关系里的第一反应。你们不是没有默契，而是默契常常被表达方式拖慢。"));
+            nameA + "在关系里更重视稳定和投入，也更容易把很多担心藏进细节里。"
+                    + nameB + "这边更在意被看见的感觉，也更需要明确的回应来建立安全感。你们不是没有默契，而是默契常常被表达方式拖慢。"));
         chapters.add(chapter(
             scoringService.generateChapterTitle(1, triA.sun(), triB.sun(), isPremium), "💞",
             nameA + "容易被" + nameB + "身上更鲜明、更直接的情绪吸引，" + nameB + "也会被" + nameA + "带来的稳定感安抚。好的时候，这段关系很容易形成一个人点火、一个人续航的组合。问题在于，一旦其中一方退回自己的舒适区，另一方就会误读成冷淡或不在乎。"));
@@ -766,10 +780,10 @@ public class CompatibilityService {
         if (isPremium) {
             chapters.add(chapter(
                 scoringService.generateChapterTitle(6, triA.sun(), triB.sun(), true), "🌟",
-                "从演化占星学的视角来看，" + nameA + "和" + nameB + "的相遇承载着某种灵魂层面的呼应。你们的月交点形成了有意义的连接——南交点的能量带来一种'似曾相识'的熟悉感，仿佛你们在某个时空里已经彼此认识；北交点则指向你们需要共同成长的方向。\n\n这段关系最重要的功课可能不是'相爱'本身，而是通过彼此看见自己。凯龙星如果被激活，意味着其中一人或双方都可能在这段关系里触及旧伤，但正因为如此，疗愈才可能真正发生。\n\n土星如果参与了重要相位，则说明这不是一段轻飘飘的缘分——它需要承诺、耐心和时间，但回报也最扎实。"));
+                "从长期相处的视角来看，" + nameA + "和" + nameB + "的相遇承载着明显的成长意义。你们之间容易出现一种'很熟悉'的感觉，但真正重要的不是这种熟悉本身，而是它会把彼此原本回避的问题带到台面上。\n\n这段关系最重要的功课可能不是表面上的靠近，而是通过彼此看见自己、修正自己。只要愿意面对旧问题、建立新边界，这段关系就有机会从反复消耗走向更稳的合作与陪伴。"));
             chapters.add(chapter(
                 scoringService.generateChapterTitle(7, triA.sun(), triB.sun(), true), "📅",
-                "从当前流年来看，接下来的12个月对你们的合盘有几个关键节点：第一，木星的运行会让某些月份关系扩张得更快，适合做出重要承诺；第二，土星的行进会考验关系的结构稳定度，如果根基不稳，那段时间是压力测试；第三，金星和水星逆行期是反思关系模式的窗口。\n\n对于" + nameA + "来说，建议在水星顺行期间做重要沟通，退行期则适合复盘而非提出新议题。对于" + nameB + "，当金星行经你的第七宫时，是一个推进关系的好时机。\n\n记住：星象是能量的天气，不是判决书。你们仍然拥有选择权。\n\n—— 小登哥 ✨"));
+                "从接下来一段时间看，这段关系会经历几个重要节点：有的阶段适合做出明确约定，有的阶段更适合回头梳理问题。对你们来说，最关键的不是抓某个所谓的完美时机，而是把重要话题放在双方都能冷静说清楚的时候。\n\n记住：节奏只是参考，不是判决。真正决定关系走向的，还是你们愿不愿意认真面对彼此。\n\n—— 小登哥 ✨"));
         }
 
         return chapters;
@@ -791,7 +805,7 @@ public class CompatibilityService {
         essence.add("稳定感不是沉默，是让对方知道你还在。");
         essence.add("情绪上来的时候先暂停，别急着判关系输赢。");
         essence.add("你们适合把模糊的问题说具体。");
-        essence.add("真正拉开差距的，从来不是星座，是愿不愿意认真回应彼此。");
+        essence.add("真正拉开差距的，是愿不愿意认真回应彼此。");
 
         if (isPremium) {
             essence.add("【短期】每周安排一次'无手机约会'，专注陪伴对方。");
@@ -799,8 +813,8 @@ public class CompatibilityService {
             essence.add("【短期】学会用对方的'爱的语言'表达关心。");
             essence.add("【中期】每季度一起做一件新鲜事，保持关系的新鲜感。");
             essence.add("【中期】建立共同的财务或生活目标，增强关系的稳定性。");
-            essence.add("【长期】定期回顾这份报告，看看哪些建议已经实现了。");
-            essence.add("【长期】重要决定避开水逆期，选择星象平稳的时候推进。");
+            essence.add("【长期】定期回顾这份内容，看看哪些建议已经实现了。");
+            essence.add("【长期】重要决定放在双方都平稳的时候推进。");
             essence.add("【长期】培养一个共同爱好，成为你们的'关系锚点'。");
         }
 
@@ -815,9 +829,7 @@ public class CompatibilityService {
         List<CompatibilityResponse.Chapter> chapters = new ArrayList<>();
         if (CompatibilityRequest.REPORT_TYPE_CAREER.equals(reportType)) {
             chapters.add(chapter("你的核心驱动力", "✨",
-                    name + "的太阳" + triA.sun() + "决定了你在事业上的启动方式，月亮" + triA.moon()
-                            + "影响你面对压力时的情绪惯性，上升" + triA.rising()
-                            + "则像别人眼中的工作风格。你不是没有潜力，而是需要在对的节奏里发力，才能把优势变成稳定结果。"));
+                    name + "在工作上有自己的启动节奏，也有比较明显的压力反应模式。你不是没有潜力，而是需要在对的节奏里发力，才能把优势变成稳定结果。"));
             chapters.add(chapter("适合你的工作角色", "🧭",
                     "你更容易在需要清晰判断、持续推进或资源整合的岗位里被看见。真正适合你的，不一定是最热闹的赛道，而是既能让你保持掌控感，又能持续积累信用和成果的位置。"));
             chapters.add(chapter("职场里的优势与盲区", "⚠️",
@@ -829,20 +841,18 @@ public class CompatibilityService {
             chapters.add(chapter("写给你的提醒", "🌙",
                     "你的事业运并不是一条直线，它更像是先校准、再发力、再放大的过程。稳住自己的节奏，你会比着急证明自己的时候更强。\n\n—— 小登哥 ✨"));
         } else {
-            chapters.add(chapter("你的财富基调", "✨",
-                    name + "的太阳" + triA.sun() + "决定了你对收入和掌控感的基本态度，月亮" + triA.moon()
-                            + "影响你在花钱、存钱和焦虑之间的反应，上升" + triA.rising()
-                            + "则决定了别人眼中你处理现实和资源的方式。你的财运重点不是一夜暴富，而是如何把资源留住并放大。"));
-            chapters.add(chapter("钱最容易从哪里来", "💎",
-                    "你更适合通过稳定能力、长期信用或资源整合来放大收入。真正适合你的赚钱方式，不一定最刺激，但往往更可持续，也更容易累积成下一阶段的安全感。"));
-            chapters.add(chapter("最需要提防的漏财点", "⚠️",
-                    "你需要特别留意两类漏财习惯：一种是情绪上来时的即时性消费，另一种是明明知道该收口，却因为拖延把小口子放成大问题。守财不是压抑自己，而是让每一笔支出更有边界。"));
-            chapters.add(chapter("接下来90天的财务节奏", "📊",
-                    "接下来三个月适合先稳现金流，再看增量机会。把固定支出、可调整支出和潜在增长项拆开，你会更清楚哪些钱值得花，哪些决定应该再观察一下。"));
-            chapters.add(chapter("副业与放大机会", "🔮",
-                    "如果你要做副业或额外增收，优先考虑那些能复用你现有能力、口碑或资源的方向。比起一时冲动的新赛道，更值得你押注的是能持续滚大的熟练项。"));
+            chapters.add(chapter("你的生活基调", "✨",
+                    name + "对收入、掌控感和资源安排有自己稳定的一套判断方式。你当前更值得关注的，不是追逐短期刺激，而是如何把资源留住并逐步放大。"));
+            chapters.add(chapter("资源最容易从哪里放大", "💎",
+                    "你更适合通过稳定能力、长期信用或资源整合来放大结果。真正适合你的方式，不一定最刺激，但往往更可持续，也更容易累积成下一阶段的安全感。"));
+            chapters.add(chapter("最需要提防的风险点", "⚠️",
+                    "你需要特别留意两类习惯：一种是情绪上来时的即时决策，另一种是明明知道该收口，却因为拖延把小口子放成大问题。建立边界，不是压抑自己，而是让每一次投入都更清楚。"));
+            chapters.add(chapter("接下来90天的生活节奏", "📊",
+                    "接下来三个月适合先稳住基础安排，再看增量机会。把固定支出、可调整支出和潜在增长项拆开，你会更清楚哪些地方值得投入，哪些决定应该再观察一下。"));
+            chapters.add(chapter("扩展机会", "🔮",
+                    "如果你要做副业或额外尝试，优先考虑那些能复用你现有能力、口碑或资源的方向。比起一时冲动的新赛道，更值得你押注的是能持续滚大的熟练项。"));
             chapters.add(chapter("写给你的提醒", "🌙",
-                    "你的财运不是靠追热点堆出来的，而是靠持续的判断力和节奏感慢慢拉开差距。先把底盘稳住，机会来的时候你会更敢接。\n\n—— 小登哥 ✨"));
+                    "你的优势不是靠追热点堆出来的，而是靠持续的判断力和节奏感慢慢拉开差距。先把底盘稳住，机会来的时候你会更敢接。\n\n—— 小登哥 ✨"));
         }
 
         if (isPremium) {
@@ -853,7 +863,7 @@ public class CompatibilityService {
             chapters.add(chapter("写给你的悄悄话", "🌟",
                     CompatibilityRequest.REPORT_TYPE_CAREER.equals(reportType)
                             ? "你真正的事业运，来自清楚自己该在什么地方出手、在什么地方留白。看见自己的节奏，比盯着别人的速度更有用。\n\n—— 小登哥 ✨"
-                            : "你真正的财运，来自会判断、会守、也敢在对的时候放大。先把底层习惯养好，钱才会更愿意留下来。\n\n—— 小登哥 ✨"));
+                            : "你真正的优势，来自会判断、会守、也敢在对的时候放大。先把底层习惯养好，后面的安排会更从容。\n\n—— 小登哥 ✨"));
         }
         return chapters;
     }
@@ -1084,7 +1094,7 @@ public class CompatibilityService {
     }
 
     /**
-     * 计算星座三元组（太阳/月亮/上升）
+     * 计算三元组（太阳/月亮/上升）
      * 优先使用 Swiss Ephemeris 精确计算（需要经纬度），否则使用简化算法
      */
     private ZodiacCalculator.ZodiacTriplet computeZodiacTriplet(CompatibilityRequest.Person person) {
@@ -1130,9 +1140,9 @@ public class CompatibilityService {
 
     private String reportTypeName(String reportType) {
         return switch (normalizeReportType(reportType)) {
-            case CompatibilityRequest.REPORT_TYPE_CAREER -> "事业测算报告";
-            case CompatibilityRequest.REPORT_TYPE_WEALTH -> "财运测算报告";
-            default -> "爱情合盘报告";
+            case CompatibilityRequest.REPORT_TYPE_CAREER -> "职业状态内容";
+            case CompatibilityRequest.REPORT_TYPE_WEALTH -> "生活节奏内容";
+            default -> "双人关系内容";
         };
     }
 
@@ -1141,7 +1151,7 @@ public class CompatibilityService {
             return request.getPersonA().getName() + "需要把节奏调顺，机会就会比想象中更快靠近。";
         }
         if (CompatibilityRequest.REPORT_TYPE_WEALTH.equals(reportType)) {
-            return request.getPersonA().getName() + "的财运重点，是先稳住底盘，再放大真正有效的机会。";
+            return request.getPersonA().getName() + "当前更适合先稳住日常安排，再逐步放大真正有效的机会。";
         }
         String otherName = request.getPersonB() != null ? request.getPersonB().getName() : "TA";
         return request.getPersonA().getName() + "和" + otherName + "之间有吸引，也需要耐心磨合。";

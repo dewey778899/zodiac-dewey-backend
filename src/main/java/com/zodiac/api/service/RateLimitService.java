@@ -69,7 +69,7 @@ public class RateLimitService {
             LocalDateTime startOfDay = LocalDate.now().atStartOfDay();
             long count = repository.countTodayReports(startOfDay);
             globalDailyCounter.set(count);
-            log.info("启动同步:今天已生成 {} 份报告", count);
+            log.info("启动同步:今天已生成 {} 份内容", count);
         } catch (Exception e) {
             log.warn("同步限流计数失败,使用 0: {}", e.getMessage());
             globalDailyCounter.set(0);
@@ -101,7 +101,7 @@ public class RateLimitService {
         long now = globalDailyCounter.incrementAndGet();
         if (now > dailyTotal) {
             globalDailyCounter.decrementAndGet();
-            return String.format("今日测算名额已满(%d 份),明天再来吧 ✨", dailyTotal);
+            return String.format("今日内容生成名额已满(%d 份),明天再来吧", dailyTotal);
         }
 
         AtomicLong ipCount = ipCounter.get(ip, k -> new AtomicLong(0));
@@ -109,7 +109,7 @@ public class RateLimitService {
         if (ipNow > perIpDaily) {
             ipCount.decrementAndGet();
             globalDailyCounter.decrementAndGet();
-            return String.format("你今天已经测了 %d 次了,明天再来吧 💕", perIpDaily);
+            return String.format("你今天已经提交了 %d 次内容生成,明天再来吧", perIpDaily);
         }
 
         if ("claude".equalsIgnoreCase(modelCode)) {
@@ -118,7 +118,7 @@ public class RateLimitService {
                 claudeCount.decrementAndGet();
                 ipCount.decrementAndGet();
                 globalDailyCounter.decrementAndGet();
-                return String.format("深度解析今日名额已用完，明天再来吧 💕");
+                return "扩展内容今日名额已用完，明天再来吧";
             }
         }
 

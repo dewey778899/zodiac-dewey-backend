@@ -53,7 +53,7 @@ public class ZodiacScoringService {
 
 
     /**
-     * 计算合盘分数
+     * 计算关系分数
      * 基础分 65 + 太阳星座相合度 + 元素平衡 + 信息完整度微调
      * 范围: 60-95
      */
@@ -119,7 +119,7 @@ public class ZodiacScoringService {
         String elemB = ELEMENT.getOrDefault(sunB, "火");
 
         if (elemA.equals(elemB)) {
-            if (score >= 88) return "灵魂共鸣型";
+            if (score >= 88) return "高度共鸣型";
             if (score >= 80) return "同元素默契型";
             return "同元素磨合型";
         }
@@ -138,7 +138,7 @@ public class ZodiacScoringService {
     }
 
     /**
-     * 根据星座组合生成个性化章节标题
+     * 根据组合特征生成个性化章节标题
      */
     public String generateChapterTitle(int chapterIndex, String sunA, String sunB, boolean isPremium) {
         String key = sunA + "×" + sunB;
@@ -146,31 +146,31 @@ public class ZodiacScoringService {
         return switch (chapterIndex) {
             case 0 -> switch (key) {
                 case "白羊座×狮子座", "狮子座×白羊座" -> "火与火的碰撞：两个王者如何共存";
-                case "巨蟹座×双鱼座", "双鱼座×巨蟹座" -> "深海双生：两个敏感灵魂的共鸣";
+                case "巨蟹座×双鱼座", "双鱼座×巨蟹座" -> "深海双生：两个敏感的人如何互相理解";
                 case "天蝎座×巨蟹座", "巨蟹座×天蝎座" -> "水象深情：当敏感遇见占有欲";
-                case "双子座×水瓶座", "水瓶座×双子座" -> "风象自由：灵魂伴侣的智力游戏";
+                case "双子座×水瓶座", "水瓶座×双子座" -> "风象自由：高频交流的思维互动";
                 case "金牛座×处女座", "处女座×金牛座" -> "土象踏实：细水长流的稳定之爱";
                 case "天秤座×狮子座", "狮子座×天秤座" -> "光芒与优雅：舞台中央的完美搭档";
-                default -> "你们的星座基因";
+                default -> "你们的相处底色";
             };
             case 1 -> isPremium
                 ? switch (key) {
                     case "白羊座×狮子座", "狮子座×白羊座" -> "烈焰共鸣：激情背后的能量博弈";
-                    case "天蝎座×双鱼座", "双鱼座×天蝎座" -> "灵魂共振：当水象深情遇见水象直觉";
-                    default -> "元素模式与相位磁场";
+                    case "天蝎座×双鱼座", "双鱼座×天蝎座" -> "深层共振：当细腻情绪遇见敏锐直觉";
+                    default -> "元素模式与互动张力";
                   }
                 : switch (key) {
                     case "白羊座×狮子座", "狮子座×白羊座" -> "激情燃烧：谁先低头谁是输家";
-                    case "天蝎座×双鱼座", "双鱼座×天蝎座" -> "灵魂交融：一眼万年的宿命感";
+                    case "天蝎座×双鱼座", "双鱼座×天蝎座" -> "情绪交融：很容易一开始就靠得很近";
                     default -> "你们在一起的化学反应";
                   };
             case 2 -> isPremium ? "矛盾的真相：你们最容易出问题的地方" : "你们最容易出问题的地方";
-            case 3 -> isPremium ? "深度相处指南" : "相处指南";
-            case 4 -> isPremium ? "宫位叠加与组合盘" : "宫位与运势预演";
-            case 5 -> isPremium ? "业力与演化视角" : "综合评估与悄悄话";
-            case 6 -> isPremium ? "时间维度：当下与未来" : "合盘总结";
+            case 3 -> isPremium ? "扩展相处指南" : "相处指南";
+            case 4 -> isPremium ? "互动结构与关系层次" : "相处节奏预判";
+            case 5 -> isPremium ? "成长视角与调整方向" : "综合评估与沟通提醒";
+            case 6 -> isPremium ? "时间维度：当下与未来" : "关系总结";
             case 7 -> isPremium ? "写给你的悄悄话" : "珍藏锦囊";
-            default -> "合盘章节";
+            default -> "内容章节";
         };
     }
 
