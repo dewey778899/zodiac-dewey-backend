@@ -117,7 +117,7 @@ public class CompatibilityService {
     }
 
     /**
-     * 根据 reportUid 从数据库查询并重建报告(分享链接用)
+     * 根据 reportUid 从数据库查询并重建内容(分享链接用)
      */
     public Optional<CompatibilityResponse> getReportByUid(String uid) {
         return repository.findByReportUid(uid).map(entity -> {
@@ -273,7 +273,7 @@ public class CompatibilityService {
                 }
 
                 【禁止事项】
-                - 不预测生死、疾病、灾难等敏感内容
+                - 不推断生死、疾病、灾难等敏感内容
                 - 不做财务投资具体建议
                 - 不替代心理咨询或医疗建议
                 - 不使用绝对化表述（如"一定会""注定"）
@@ -320,7 +320,7 @@ public class CompatibilityService {
                 }
 
                 【禁止事项】
-                - 不预测生死、疾病、灾难等敏感内容
+                - 不推断生死、疾病、灾难等敏感内容
                 - 不做财务投资具体建议
                 - 不替代心理咨询或医疗建议
                 - 不使用绝对化表述（如"一定会""注定""永远"）
@@ -338,14 +338,14 @@ public class CompatibilityService {
     private String buildSingleSystemPrompt(boolean isPremium, String reportType) {
         String reportName = reportTypeName(reportType);
         String focus = CompatibilityRequest.REPORT_TYPE_CAREER.equals(reportType)
-                ? "职业驱动力、适合赛道、团队协作方式、未来90天发力点"
+                ? "职业驱动力、适合角色、团队协作方式、未来90天行动安排"
                 : "资源安排方式、风险点、副业机会、未来90天生活节奏";
         String chapters = CompatibilityRequest.REPORT_TYPE_CAREER.equals(reportType)
                 ? """
                     {"title": "你的核心驱动力", "emoji": "✨", "content": "分析你的个人状态如何影响职业欲望、决策方式与压力反应。"},
                     {"title": "适合你的工作角色", "emoji": "🧭", "content": "结合元素与模式，判断你更适合独立推进、团队协作还是资源整合型岗位。"},
                     {"title": "职场里的优势与盲区", "emoji": "⚠️", "content": "拆解你最容易被看见的优点，以及最容易卡住你的习惯性模式。"},
-                    {"title": "接下来90天的事业节奏", "emoji": "📈", "content": "给出短期推进建议：什么时候适合冲刺、什么时候适合蓄力、什么时候适合做关键沟通。"},
+                    {"title": "未来90天行动建议", "emoji": "📈", "content": "给出短期推进建议：先做什么、暂停什么、每周如何复盘。"},
                     {"title": "升级建议", "emoji": "🔮", "content": "总结最值得投入的成长方向、合作方式和执行策略。"},
                     {"title": "写给你的提醒", "emoji": "🌙", "content": "以一对一咨询口吻写一段有行动感的结语。"}
                   """
@@ -358,8 +358,8 @@ public class CompatibilityService {
                     {"title": "写给你的提醒", "emoji": "🌙", "content": "以一对一咨询口吻写一段务实又温柔的结语。"}
                   """;
         String premiumNote = isPremium
-                ? "5. 总字数控制在 5000-8000 字，每章至少 450 字。\n6. 全文使用第二人称“你”，做成专业咨询感。"
-                : "5. 总字数控制在 3000-5000 字。";
+                ? "5. 总字数控制在 900-1300 字，每章 120-180 字。\n6. 全文使用第二人称“你”，做成专业咨询感。"
+                : "5. 总字数控制在 600-900 字。";
 
         return """
                 你是「小登哥」，一位拥有20年经验的个人成长顾问，擅长把用户提供的信息整理成清晰、实用、有人味的个人分析。
@@ -389,7 +389,7 @@ public class CompatibilityService {
                 }
 
                 【禁止事项】
-                - 不预测生死、疾病、灾难等敏感内容
+                - 不推断生死、疾病、灾难等敏感内容
                 - 不提供具体金融投资买卖建议
                 - 不替代法律、医疗或心理咨询
                 - 不使用绝对化表述（如“一定会”“注定”）
@@ -478,7 +478,7 @@ public class CompatibilityService {
         sb.append("\n");
         sb.append("【主题重点】\n");
         if (CompatibilityRequest.REPORT_TYPE_CAREER.equals(reportType)) {
-            sb.append("请重点分析：职业驱动力、适合岗位、团队协作方式、未来90天发力节奏。\n");
+            sb.append("请重点分析：职业驱动力、适合角色、团队协作方式、未来90天行动安排。\n");
         } else {
             sb.append("请重点分析：资源安排方式、消费习惯、副业机会、未来90天生活节奏。\n");
         }
@@ -834,12 +834,12 @@ public class CompatibilityService {
                     "你更容易在需要清晰判断、持续推进或资源整合的岗位里被看见。真正适合你的，不一定是最热闹的赛道，而是既能让你保持掌控感，又能持续积累信用和成果的位置。"));
             chapters.add(chapter("职场里的优势与盲区", "⚠️",
                     "你的优势在于一旦进入状态就很有连续性，但盲区也常常来自这里：太想一次做到位，就容易把决定拖到过晚；太想自己扛住，就容易错过协作窗口。与其逼自己全能，不如把判断、节奏和借力拆开来看。"));
-            chapters.add(chapter("接下来90天的事业节奏", "📈",
+            chapters.add(chapter("未来90天行动建议", "📈",
                     "未来三个月更适合把重心放在两件事上：一是把最关键的目标排到高能量时段，二是把每周的复盘固定下来。只要节奏稳定下来，你的推进感会比想象中更快。"));
             chapters.add(chapter("升级建议", "🔮",
                     "你最值得投入的方向，不是盲目加量，而是找到真正能放大你判断力和执行力的场域。选项目时看三件事：是否有成长空间、是否能形成可复用成果、是否能让你持续被看见。"));
             chapters.add(chapter("写给你的提醒", "🌙",
-                    "你的事业运并不是一条直线，它更像是先校准、再发力、再放大的过程。稳住自己的节奏，你会比着急证明自己的时候更强。\n\n—— 小登哥 ✨"));
+                    "你的职业状态不是一条直线，它更像是先校准、再发力、再放大的过程。稳住自己的节奏，你会比着急证明自己的时候更强。\n\n—— 小登哥 ✨"));
         } else {
             chapters.add(chapter("你的生活基调", "✨",
                     name + "对收入、掌控感和资源安排有自己稳定的一套判断方式。你当前更值得关注的，不是追逐短期刺激，而是如何把资源留住并逐步放大。"));
@@ -858,11 +858,11 @@ public class CompatibilityService {
         if (isPremium) {
             chapters.add(chapter("高阶机会窗口", "📅",
                     CompatibilityRequest.REPORT_TYPE_CAREER.equals(reportType)
-                            ? "深度版建议你把未来12个月拆成三个阶段：一段用来冲曝光，一段用来稳结果，一段用来做关键转向。不要每个月都追求同一种推进方式，节奏比蛮力更重要。"
-                            : "深度版建议你把未来12个月拆成三个阶段：一段用来守现金流，一段用来试增量，一段用来放大有效渠道。不是每个机会都值得接，最重要的是筛选。"));
+                            ? "扩展内容建议你把未来12个月拆成三个阶段：一段用来冲曝光，一段用来稳结果，一段用来做关键转向。不要每个月都追求同一种推进方式，节奏比蛮力更重要。"
+                            : "扩展内容建议你把未来12个月拆成三个阶段：一段用来守现金流，一段用来试增量，一段用来放大有效渠道。不是每个机会都值得接，最重要的是筛选。"));
             chapters.add(chapter("写给你的悄悄话", "🌟",
                     CompatibilityRequest.REPORT_TYPE_CAREER.equals(reportType)
-                            ? "你真正的事业运，来自清楚自己该在什么地方出手、在什么地方留白。看见自己的节奏，比盯着别人的速度更有用。\n\n—— 小登哥 ✨"
+                            ? "你真正的职业优势，来自清楚自己该在什么地方出手、在什么地方留白。看见自己的节奏，比盯着别人的速度更有用。\n\n—— 小登哥 ✨"
                             : "你真正的优势，来自会判断、会守、也敢在对的时候放大。先把底层习惯养好，后面的安排会更从容。\n\n—— 小登哥 ✨"));
         }
         return chapters;

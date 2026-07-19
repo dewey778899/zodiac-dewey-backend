@@ -83,7 +83,7 @@ public class SwissEphemerisCalculator {
     }
 
     /**
-     * 计算完整星盘
+     * 计算完整星座维度
      */
     public ZodiacCalculator.ZodiacTriplet computeAll(String birthDate, String birthTime, 
                                                       String timezone, double latitude, double longitude) {

@@ -66,7 +66,7 @@ public class ZodiacCalculator {
     /**
      * 计算月亮星座（简化版）
      * 使用平均周期 27.3216 天近似计算，精度约±1-2个星座
-     * 如需精确计算，建议接入 Swiss Ephemeris 或专业占星API
+     * 如需精确计算，建议接入 Swiss Ephemeris 或专业星座数据 API
      */
     public static String computeMoon(String birthDate, String birthTime) {
         if (birthDate == null || birthDate.isBlank()) return "未知";
@@ -107,7 +107,7 @@ public class ZodiacCalculator {
      *   1. 未考虑出生地点地理纬度（高纬度地区误差更大）
      *   2. 未考虑黄赤交角和岁差影响
      *   3. 使用简化公式而非真实天文计算
-     * 如需精确计算，建议接入 Swiss Ephemeris 或专业占星API
+     * 如需精确计算，建议接入 Swiss Ephemeris 或专业星座数据 API
      */
     public static String computeRising(String birthDate, String birthTime) {
         if (birthDate == null || birthDate.isBlank()) return "未知";
