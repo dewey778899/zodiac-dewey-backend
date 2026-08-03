@@ -15,6 +15,8 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
 import java.security.SecureRandom;
+import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -28,6 +30,8 @@ public class ReferralService {
     private static final SecureRandom RNG = new SecureRandom();
     private static final String INVITE_CHARS = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
     private static final int DEFAULT_AUTO_REWARD_FEN = 100;
+    private static final int MIN_WITHDRAW_FEN = 100;
+    private static final int MAX_WITHDRAWALS_PER_DAY = 1;
     private static final String AUTO_REWARD_REMARK = "auto-payment-settlement";
 
     private final ReferralUserRepository referralUserRepository;
@@ -120,8 +124,13 @@ public class ReferralService {
                                                 String remark) {
         ReferralUser user = referralUserRepository.findByPhone(normalizePhone(phone))
                 .orElseThrow(() -> new IllegalArgumentException("referral user not found"));
-        if (amountFen == null || amountFen <= 0) {
-            throw new IllegalArgumentException("withdraw amount must be greater than 0");
+        if (amountFen == null || amountFen < MIN_WITHDRAW_FEN) {
+            throw new IllegalArgumentException("单笔提现金额最低为 1 元");
+        }
+        LocalDateTime dayStart = LocalDate.now().atStartOfDay();
+        if (referralWithdrawalRepository.countByUserIdAndCreatedAtGreaterThanEqual(user.getId(), dayStart)
+                >= MAX_WITHDRAWALS_PER_DAY) {
+            throw new IllegalArgumentException("每日最多提交 1 笔提现申请，请次日再试");
         }
         if (user.getWithdrawableFen() == null || user.getWithdrawableFen() < amountFen) {
             throw new IllegalArgumentException("insufficient withdrawable balance");
